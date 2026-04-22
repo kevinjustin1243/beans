@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+beancount
+pyyaml
+bcrypt
+python-jose[cryptography]
