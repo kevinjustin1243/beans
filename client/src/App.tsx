@@ -7,6 +7,7 @@ import Accounts from "./pages/Accounts";
 import Transactions from "./pages/Transactions";
 import Reports from "./pages/Reports";
 import Budget from "./pages/Budget";
+import Goals from "./pages/Goals";
 import NotFound from "./pages/NotFound";
 
 const App = () => {
@@ -28,6 +29,7 @@ const App = () => {
           <Route path="transactions" element={<Transactions />} />
           <Route path="reports" element={<Reports />} />
           <Route path="budget" element={<Budget />} />
+          <Route path="goals" element={<Goals />} />
         </Route>
         <Route path="*" element={<NotFound />} />
       </Routes>
