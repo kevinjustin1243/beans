@@ -5,9 +5,9 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
 import Transactions from "./pages/Transactions";
-import Reports from "./pages/Reports";
 import Budget from "./pages/Budget";
 import Goals from "./pages/Goals";
+import Ledger from "./pages/Ledger";
 import NotFound from "./pages/NotFound";
 
 const App = () => {
@@ -27,9 +27,9 @@ const App = () => {
           <Route index element={<Navigate to="transactions" replace />} />
           <Route path="accounts" element={<Accounts />} />
           <Route path="transactions" element={<Transactions />} />
-          <Route path="reports" element={<Reports />} />
           <Route path="budget" element={<Budget />} />
           <Route path="goals" element={<Goals />} />
+          <Route path="ledger" element={<Ledger />} />
         </Route>
         <Route path="*" element={<NotFound />} />
       </Routes>

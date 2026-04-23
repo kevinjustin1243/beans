@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { PlusIcon, XMarkIcon } from "../components/icons";
 
@@ -10,14 +10,40 @@ interface AccountNode {
 
 interface FlatRow {
   account: string;
-  balance: Record<string, string>;
+  totalBalance: Record<string, string>;
   depth: number;
+  isLeaf: boolean;
+}
+
+// Recursively sum a node's balance including all descendants.
+function sumBalances(node: AccountNode): Record<string, string> {
+  const totals: Record<string, number> = {};
+  for (const [cur, amt] of Object.entries(node.balance)) {
+    totals[cur] = (totals[cur] ?? 0) + parseFloat(amt);
+  }
+  for (const child of Object.values(node.children)) {
+    for (const [cur, amt] of Object.entries(sumBalances(child))) {
+      totals[cur] = (totals[cur] ?? 0) + parseFloat(amt);
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(totals)
+      .filter(([, v]) => v !== 0)
+      .map(([k, v]) => [k, String(v)])
+  );
 }
 
 function flatten(node: AccountNode, depth = 0, rows: FlatRow[] = []): FlatRow[] {
-  if (node.account) rows.push({ account: node.account, balance: node.balance, depth });
+  const isLeaf = Object.keys(node.children).length === 0;
+  if (node.account) {
+    rows.push({ account: node.account, totalBalance: sumBalances(node), depth, isLeaf });
+  }
   for (const child of Object.values(node.children)) flatten(child, depth + 1, rows);
   return rows;
+}
+
+function fmtUSD(n: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 }
 
 function formatBalance(balance: Record<string, string>): string {
@@ -26,14 +52,10 @@ function formatBalance(balance: Record<string, string>): string {
   return entries
     .map(([currency, number]) => {
       const n = parseFloat(number);
-      if (currency === "USD") return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+      if (currency === "USD") return fmtUSD(n);
       return `${n.toFixed(2)} ${currency}`;
     })
     .join(", ");
-}
-
-function shortName(account: string): string {
-  return account.split(":").pop()!;
 }
 
 function isTopLevel(account: string): boolean {
@@ -44,8 +66,25 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function SummaryCard({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-5">
+      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">{label}</p>
+      <p className={`text-2xl font-semibold ${color}`}>{value}</p>
+    </div>
+  );
+}
+
 export default function Accounts() {
-  const [rows, setRows] = useState<FlatRow[]>([]);
+  const [root, setRoot] = useState<AccountNode | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -54,12 +93,22 @@ export default function Accounts() {
     setLoading(true);
     apiFetch("/api/accounts/balances")
       .then((r) => (r.ok ? r.json() : r.json().then((e: { detail: string }) => Promise.reject(e.detail))))
-      .then((root: AccountNode) => setRows(flatten(root)))
+      .then((data: AccountNode) => setRoot(data))
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }
 
   useEffect(() => { load(); }, []);
+
+  const rows = root ? flatten(root) : [];
+
+  // Compute net worth summary from root children
+  const assetsTotal = root?.children["Assets"] ? sumBalances(root.children["Assets"]) : {};
+  const liabTotal = root?.children["Liabilities"] ? sumBalances(root.children["Liabilities"]) : {};
+  const assetsUSD = parseFloat(assetsTotal["USD"] ?? "0");
+  const liabUSD = parseFloat(liabTotal["USD"] ?? "0"); // negative in beancount
+  const netWorth = assetsUSD + liabUSD;
+  const hasSummary = root && (assetsUSD !== 0 || liabUSD !== 0);
 
   return (
     <div className="p-8">
@@ -73,6 +122,27 @@ export default function Accounts() {
           Opening Balance
         </button>
       </div>
+
+      {/* Net worth summary */}
+      {hasSummary && (
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <SummaryCard
+            label="Total Assets"
+            value={fmtUSD(assetsUSD)}
+            color="text-emerald-600"
+          />
+          <SummaryCard
+            label="Total Liabilities"
+            value={fmtUSD(Math.abs(liabUSD))}
+            color="text-red-500"
+          />
+          <SummaryCard
+            label="Net Worth"
+            value={fmtUSD(netWorth)}
+            color={netWorth >= 0 ? "text-emerald-600" : "text-red-500"}
+          />
+        </div>
+      )}
 
       {error && <p className="text-red-600 mb-4">{error}</p>}
 
@@ -91,21 +161,37 @@ export default function Accounts() {
               {rows.map((row) => (
                 <tr
                   key={row.account}
-                  className={`border-b border-slate-50 ${isTopLevel(row.account) ? "bg-slate-50" : "hover:bg-slate-50"}`}
+                  className={`border-b border-slate-50 ${
+                    isTopLevel(row.account)
+                      ? "bg-slate-50"
+                      : row.isLeaf
+                        ? "hover:bg-slate-50"
+                        : "hover:bg-slate-50"
+                  }`}
                 >
                   <td className="px-6 py-2.5">
                     <span
                       style={{ paddingLeft: `${(row.depth - 1) * 16}px` }}
-                      className={isTopLevel(row.account) ? "font-semibold text-slate-800" : "text-slate-600"}
+                      className={
+                        isTopLevel(row.account)
+                          ? "font-semibold text-slate-800"
+                          : row.isLeaf
+                            ? "text-slate-600"
+                            : "font-medium text-slate-700"
+                      }
                     >
-                      {isTopLevel(row.account) ? row.account : shortName(row.account)}
+                      {isTopLevel(row.account)
+                        ? row.account
+                        : row.account.split(":").pop()}
                     </span>
                     {!isTopLevel(row.account) && (
                       <span className="ml-2 text-xs text-slate-400">{row.account}</span>
                     )}
                   </td>
                   <td className="px-6 py-2.5 text-right font-mono text-slate-700">
-                    {formatBalance(row.balance)}
+                    <span className={!row.isLeaf && !isTopLevel(row.account) ? "text-slate-400 text-xs" : ""}>
+                      {formatBalance(row.totalBalance)}
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -134,7 +220,7 @@ function OpeningBalanceModal({ onClose, onSaved }: { onClose: () => void; onSave
 
   const inputCls = "border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-full";
 
-  async function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
     setError("");
     setSaving(true);

@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.accounts import router as accounts_router
@@ -8,6 +8,8 @@ from api.query import router as query_router
 from api.auth import router as auth_router
 from api.budget import router as budget_router
 from api.goals import router as goals_router
+from api.directives import router as directives_router
+from modules.auth import require_user
 from modules.db import init_db
 from modules.ledger import get_ledger
 
@@ -29,6 +31,7 @@ app.include_router(reports_router)
 app.include_router(query_router)
 app.include_router(budget_router)
 app.include_router(goals_router)
+app.include_router(directives_router)
 
 
 @app.get("/health")
@@ -40,7 +43,7 @@ def health():
         return {"status": "error", "detail": str(e)}
 
 
-@app.get("/api/errors")
+@app.get("/api/errors", dependencies=[Depends(require_user)])
 def parse_errors():
     try:
         _, errors, _ = get_ledger()

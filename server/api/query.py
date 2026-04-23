@@ -19,8 +19,8 @@ def run_query(body: QueryIn):
         raise HTTPException(status_code=404, detail=str(e))
 
     try:
-        from beancount.query import query as bq
-        result_types, result_rows = bq.run_query(entries, options, body.bql)
+        from beanquery.query import run_query
+        result_types, result_rows = run_query(entries, options, body.bql)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

@@ -31,13 +31,14 @@ class TransactionIn(BaseModel):
 
 @router.get("")
 def list_transactions(
-    account: Optional[str] = Query(None, description="Filter by account name (substring match)"),
-    payee: Optional[str] = Query(None, description="Filter by payee (case-insensitive substring)"),
-    narration: Optional[str] = Query(None, description="Filter by narration (case-insensitive substring)"),
-    start: Optional[datetime.date] = Query(None, description="Start date (inclusive)"),
-    end: Optional[datetime.date] = Query(None, description="End date (inclusive)"),
-    flag: Optional[str] = Query(None, description="Filter by flag (* or !)"),
-    tag: Optional[str] = Query(None, description="Filter by tag"),
+    account: Optional[str] = Query(None),
+    payee: Optional[str] = Query(None),
+    narration: Optional[str] = Query(None),
+    start: Optional[datetime.date] = Query(None),
+    end: Optional[datetime.date] = Query(None),
+    flag: Optional[str] = Query(None),
+    tag: Optional[str] = Query(None),
+    link: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
@@ -56,6 +57,8 @@ def list_transactions(
         txns = [t for t in txns if t.flag == flag]
     if tag:
         txns = [t for t in txns if tag in t.tags]
+    if link:
+        txns = [t for t in txns if link in t.links]
     if account:
         txns = [t for t in txns if any(account in p.account for p in t.postings)]
     if payee:
@@ -81,15 +84,18 @@ def create_transaction(body: TransactionIn):
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Beancount file not found: {BEANCOUNT_FILE}")
 
-    lines = [_format_transaction(body)]
-    with open(path, "a") as f:
-        f.write("\n" + lines[0] + "\n")
+    _ensure_accounts_open([p.account for p in body.postings if p.account], body.date, path)
 
-    return {"ok": True, "entry": lines[0]}
+    with open(path, "a") as f:
+        f.write("\n" + _format_transaction(body) + "\n")
+
+    return {"ok": True}
 
 
 @router.put("/{lineno}")
 def update_transaction(lineno: int, body: TransactionIn):
+    path = Path(BEANCOUNT_FILE)
+    _ensure_accounts_open([p.account for p in body.postings if p.account], body.date, path)
     try:
         replace_transaction(lineno, _format_transaction(body))
     except (FileNotFoundError, IndexError) as e:
@@ -103,6 +109,26 @@ def remove_transaction(lineno: int):
         delete_transaction(lineno)
     except (FileNotFoundError, IndexError) as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+def _ensure_accounts_open(accounts: list[str], txn_date: datetime.date, path: Path) -> None:
+    try:
+        entries, _, _ = get_ledger()
+    except FileNotFoundError:
+        return
+
+    open_accounts = {e.account for e in entries if isinstance(e, data.Open)}
+    missing = [a for a in accounts if a and a not in open_accounts]
+    if not missing:
+        return
+
+    # Use the earliest existing open date so new opens sort before all transactions
+    existing_opens = [e for e in entries if isinstance(e, data.Open)]
+    open_date = min((e.date for e in existing_opens), default=txn_date - datetime.timedelta(days=1))
+
+    with open(path, "a") as f:
+        for account in missing:
+            f.write(f"\n{open_date} open {account}\n")
 
 
 def _format_transaction(t: TransactionIn) -> str:

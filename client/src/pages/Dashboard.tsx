@@ -3,7 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import {
   ArrowRightOnRectangleIcon,
   BanknoteIcon,
-  ChartBarIcon,
+  BookOpenIcon,
   CreditCardIcon,
   FlagIcon,
   ListBulletIcon,
@@ -12,9 +12,9 @@ import {
 const nav = [
   { to: "accounts", label: "Accounts", icon: <CreditCardIcon className="w-5 h-5" /> },
   { to: "transactions", label: "Transactions", icon: <ListBulletIcon className="w-5 h-5" /> },
-  { to: "reports", label: "Reports", icon: <ChartBarIcon className="w-5 h-5" /> },
   { to: "budget", label: "Budget", icon: <BanknoteIcon className="w-5 h-5" /> },
   { to: "goals", label: "Goals", icon: <FlagIcon className="w-5 h-5" /> },
+  { to: "ledger", label: "Ledger", icon: <BookOpenIcon className="w-5 h-5" /> },
 ];
 
 export default function Dashboard() {
