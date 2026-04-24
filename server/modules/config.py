@@ -19,15 +19,28 @@ def _get(key: str, required: bool = True) -> str:
     return str(val) if val else ""
 
 
-def _get_beancount_file() -> str:
-    return str(Path(_get("ledger")).expanduser())
-
-
-BEANCOUNT_FILE = _get_beancount_file()
 SECRET_KEY = _get("secret_key")
 
 
-def get_users() -> dict[str, str]:
-    """Returns {username: hashed_password} from config."""
+def get_users() -> dict[str, dict]:
+    """Returns {username: {password: <bcrypt hash>, ledger: <path>}}."""
     cfg = _load_config()
-    return cfg.get("users") or {}
+    raw = cfg.get("users") or {}
+    out: dict[str, dict] = {}
+    for name, val in raw.items():
+        if isinstance(val, str):
+            raise ValueError(
+                f"User '{name}' uses legacy config format. Rewrite users: as:\n"
+                f"  users:\n    {name}:\n      password: <bcrypt-hash>\n      ledger: <path-to-ledger>"
+            )
+        if not isinstance(val, dict) or "password" not in val or "ledger" not in val:
+            raise ValueError(f"User '{name}' must have 'password' and 'ledger' fields")
+        out[name] = val
+    return out
+
+
+def get_user_ledger(username: str) -> str:
+    user = get_users().get(username)
+    if not user:
+        raise KeyError(f"User '{username}' not found in config")
+    return str(Path(user["ledger"]).expanduser())

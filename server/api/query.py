@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 from modules.ledger import get_ledger
 
-router = APIRouter(prefix="/api/query", tags=["query"], dependencies=[Depends(require_user)])
+router = APIRouter(prefix="/api/query", tags=["query"])
 
 
 class QueryIn(BaseModel):
@@ -12,9 +12,9 @@ class QueryIn(BaseModel):
 
 
 @router.post("")
-def run_query(body: QueryIn):
+def run_query(body: QueryIn, username: str = Depends(require_user)):
     try:
-        entries, _, options = get_ledger()
+        entries, _, options = get_ledger(username)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 

@@ -9,7 +9,7 @@ from modules.auth import require_user
 from modules.db import get_conn
 from modules.quotes import fetch_history, fetch_quote
 
-router = APIRouter(prefix="/api/investments", tags=["investments"], dependencies=[Depends(require_user)])
+router = APIRouter(prefix="/api/investments", tags=["investments"])
 
 CACHE_TTL = datetime.timedelta(minutes=15)
 
@@ -35,7 +35,7 @@ def _refresh_quote(conn, ticker: str, force: bool = False):
     try:
         q = fetch_quote(ticker)
     except Exception:
-        return row  # fall back to cached value if fetch fails
+        return row
 
     now = datetime.datetime.utcnow().isoformat()
     conn.execute(
@@ -87,23 +87,27 @@ def _serialize(inv, quote) -> dict:
 
 
 @router.get("")
-def list_investments(refresh: bool = Query(False)):
+def list_investments(refresh: bool = Query(False), username: str = Depends(require_user)):
     with get_conn() as conn:
-        invs = conn.execute("SELECT * FROM investments ORDER BY ticker").fetchall()
+        invs = conn.execute(
+            "SELECT * FROM investments WHERE user = ? ORDER BY ticker",
+            (username,),
+        ).fetchall()
         results = [_serialize(inv, _refresh_quote(conn, inv["ticker"], force=refresh)) for inv in invs]
     return {"investments": results}
 
 
 @router.post("", status_code=201)
-def add_investment(body: InvestmentIn):
+def add_investment(body: InvestmentIn, username: str = Depends(require_user)):
     inv_id = str(uuid.uuid4())
     ticker = body.ticker.upper().strip()
     if not ticker:
         raise HTTPException(status_code=400, detail="Ticker required")
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO investments (id, ticker, shares, cost_basis, name) VALUES (?, ?, ?, ?, ?)",
-            (inv_id, ticker, body.shares, body.cost_basis, body.name),
+            "INSERT INTO investments (id, user, ticker, shares, cost_basis, name)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (inv_id, username, ticker, body.shares, body.cost_basis, body.name),
         )
         conn.commit()
         _refresh_quote(conn, ticker, force=True)
@@ -111,11 +115,12 @@ def add_investment(body: InvestmentIn):
 
 
 @router.put("/{inv_id}")
-def update_investment(inv_id: str, body: InvestmentIn):
+def update_investment(inv_id: str, body: InvestmentIn, username: str = Depends(require_user)):
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE investments SET ticker=?, shares=?, cost_basis=?, name=? WHERE id=?",
-            (body.ticker.upper().strip(), body.shares, body.cost_basis, body.name, inv_id),
+            "UPDATE investments SET ticker=?, shares=?, cost_basis=?, name=?"
+            " WHERE id=? AND user=?",
+            (body.ticker.upper().strip(), body.shares, body.cost_basis, body.name, inv_id, username),
         )
         conn.commit()
     if cur.rowcount == 0:
@@ -124,14 +129,17 @@ def update_investment(inv_id: str, body: InvestmentIn):
 
 
 @router.delete("/{inv_id}", status_code=204)
-def delete_investment(inv_id: str):
+def delete_investment(inv_id: str, username: str = Depends(require_user)):
     with get_conn() as conn:
-        conn.execute("DELETE FROM investments WHERE id = ?", (inv_id,))
+        conn.execute(
+            "DELETE FROM investments WHERE id = ? AND user = ?",
+            (inv_id, username),
+        )
         conn.commit()
 
 
 @router.get("/{ticker}/history")
-def history(ticker: str, range: str = Query("1mo")):
+def history(ticker: str, range: str = Query("1mo"), username: str = Depends(require_user)):
     try:
         hist = fetch_history(ticker.upper(), range)
     except Exception as e:

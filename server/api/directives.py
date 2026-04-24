@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from modules.auth import require_user
-from modules.config import BEANCOUNT_FILE
+from modules.config import get_user_ledger
 from modules.ledger import get_ledger, delete_transaction
 
-router = APIRouter(prefix="/api/directives", tags=["directives"], dependencies=[Depends(require_user)])
+router = APIRouter(prefix="/api/directives", tags=["directives"])
 
 DIRECTIVE_TYPES = ("open", "close", "balance", "note", "price", "event", "pad", "commodity")
 
@@ -96,14 +96,17 @@ def _serialize_commodity(e) -> dict:
 
 
 @router.get("")
-def list_directives(type: Optional[str] = Query(None, description="Filter by directive type")):
+def list_directives(
+    type: Optional[str] = Query(None, description="Filter by directive type"),
+    username: str = Depends(require_user),
+):
     from beancount.core import data as bc
 
     if type and type not in DIRECTIVE_TYPES:
         raise HTTPException(status_code=400, detail=f"Unknown type. Valid: {', '.join(DIRECTIVE_TYPES)}")
 
     try:
-        entries, _, _ = get_ledger()
+        entries, _, _ = get_ledger(username)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -130,10 +133,10 @@ def list_directives(type: Optional[str] = Query(None, description="Filter by dir
     return {"directives": result}
 
 
-def _append(text: str) -> None:
-    path = Path(BEANCOUNT_FILE)
+def _append(username: str, text: str) -> None:
+    path = Path(get_user_ledger(username))
     if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Beancount file not found: {BEANCOUNT_FILE}")
+        raise HTTPException(status_code=404, detail=f"Beancount file not found: {path}")
     with open(path, "a") as f:
         f.write("\n" + text + "\n")
 
@@ -189,59 +192,59 @@ class CommodityIn(BaseModel):
 
 
 @router.post("/open", status_code=201)
-def create_open(body: OpenIn):
+def create_open(body: OpenIn, username: str = Depends(require_user)):
     currencies = f"  {' '.join(body.currencies)}" if body.currencies else ""
     booking = f' "{body.booking}"' if body.booking else ""
-    _append(f"{body.date} open {body.account}{currencies}{booking}")
+    _append(username, f"{body.date} open {body.account}{currencies}{booking}")
     return {"ok": True}
 
 
 @router.post("/close", status_code=201)
-def create_close(body: CloseIn):
-    _append(f"{body.date} close {body.account}")
+def create_close(body: CloseIn, username: str = Depends(require_user)):
+    _append(username, f"{body.date} close {body.account}")
     return {"ok": True}
 
 
 @router.post("/balance", status_code=201)
-def create_balance(body: BalanceIn):
+def create_balance(body: BalanceIn, username: str = Depends(require_user)):
     tolerance = f" ~ {body.tolerance}" if body.tolerance else ""
-    _append(f"{body.date} balance {body.account}  {body.amount} {body.currency}{tolerance}")
+    _append(username, f"{body.date} balance {body.account}  {body.amount} {body.currency}{tolerance}")
     return {"ok": True}
 
 
 @router.post("/note", status_code=201)
-def create_note(body: NoteIn):
-    _append(f'{body.date} note {body.account} "{body.comment}"')
+def create_note(body: NoteIn, username: str = Depends(require_user)):
+    _append(username, f'{body.date} note {body.account} "{body.comment}"')
     return {"ok": True}
 
 
 @router.post("/price", status_code=201)
-def create_price(body: PriceIn):
-    _append(f"{body.date} price {body.currency}  {body.amount} {body.amount_currency}")
+def create_price(body: PriceIn, username: str = Depends(require_user)):
+    _append(username, f"{body.date} price {body.currency}  {body.amount} {body.amount_currency}")
     return {"ok": True}
 
 
 @router.post("/event", status_code=201)
-def create_event(body: EventIn):
-    _append(f'{body.date} event "{body.event_type}" "{body.description}"')
+def create_event(body: EventIn, username: str = Depends(require_user)):
+    _append(username, f'{body.date} event "{body.event_type}" "{body.description}"')
     return {"ok": True}
 
 
 @router.post("/pad", status_code=201)
-def create_pad(body: PadIn):
-    _append(f"{body.date} pad {body.account}  {body.source_account}")
+def create_pad(body: PadIn, username: str = Depends(require_user)):
+    _append(username, f"{body.date} pad {body.account}  {body.source_account}")
     return {"ok": True}
 
 
 @router.post("/commodity", status_code=201)
-def create_commodity(body: CommodityIn):
-    _append(f"{body.date} commodity {body.currency}")
+def create_commodity(body: CommodityIn, username: str = Depends(require_user)):
+    _append(username, f"{body.date} commodity {body.currency}")
     return {"ok": True}
 
 
 @router.delete("/{lineno}", status_code=204)
-def delete_directive(lineno: int):
+def delete_directive(lineno: int, username: str = Depends(require_user)):
     try:
-        delete_transaction(lineno)
+        delete_transaction(username, lineno)
     except (FileNotFoundError, IndexError) as e:
         raise HTTPException(status_code=404, detail=str(e))

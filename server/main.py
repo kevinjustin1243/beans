@@ -11,6 +11,7 @@ from api.goals import router as goals_router
 from api.directives import router as directives_router
 from api.investments import router as investments_router
 from modules.auth import require_user
+from modules.config import get_users
 from modules.db import init_db
 from modules.ledger import get_ledger
 
@@ -39,17 +40,18 @@ app.include_router(investments_router)
 
 @app.get("/health")
 def health():
+    """Unauthenticated — checks config can be parsed and per-user ledgers resolve."""
     try:
-        _, errors, _ = get_ledger()
-        return {"status": "ok", "errors": len(errors)}
-    except FileNotFoundError as e:
+        users = get_users()
+    except Exception as e:
         return {"status": "error", "detail": str(e)}
+    return {"status": "ok", "users": list(users.keys())}
 
 
-@app.get("/api/errors", dependencies=[Depends(require_user)])
-def parse_errors():
+@app.get("/api/errors")
+def parse_errors(username: str = Depends(require_user)):
     try:
-        _, errors, _ = get_ledger()
+        _, errors, _ = get_ledger(username)
     except FileNotFoundError as e:
         return {"errors": [str(e)]}
 

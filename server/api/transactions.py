@@ -6,11 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from modules.auth import require_user
 from pydantic import BaseModel
 
-from modules.config import BEANCOUNT_FILE
+from modules.config import get_user_ledger
 from modules.ledger import get_ledger, serialize_transaction, delete_transaction, replace_transaction
 from beancount.core import data
 
-router = APIRouter(prefix="/api/transactions", tags=["transactions"], dependencies=[Depends(require_user)])
+router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
 
 class PostingIn(BaseModel):
@@ -41,9 +41,10 @@ def list_transactions(
     link: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    username: str = Depends(require_user),
 ):
     try:
-        entries, _, _ = get_ledger()
+        entries, _, _ = get_ledger(username)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -79,12 +80,12 @@ def list_transactions(
 
 
 @router.post("", status_code=201)
-def create_transaction(body: TransactionIn):
-    path = Path(BEANCOUNT_FILE)
+def create_transaction(body: TransactionIn, username: str = Depends(require_user)):
+    path = Path(get_user_ledger(username))
     if not path.exists():
-        raise HTTPException(status_code=404, detail=f"Beancount file not found: {BEANCOUNT_FILE}")
+        raise HTTPException(status_code=404, detail=f"Beancount file not found: {path}")
 
-    _ensure_accounts_open([p.account for p in body.postings if p.account], body.date, path)
+    _ensure_accounts_open(username, [p.account for p in body.postings if p.account], body.date, path)
 
     with open(path, "a") as f:
         f.write("\n" + _format_transaction(body) + "\n")
@@ -93,27 +94,27 @@ def create_transaction(body: TransactionIn):
 
 
 @router.put("/{lineno}")
-def update_transaction(lineno: int, body: TransactionIn):
-    path = Path(BEANCOUNT_FILE)
-    _ensure_accounts_open([p.account for p in body.postings if p.account], body.date, path)
+def update_transaction(lineno: int, body: TransactionIn, username: str = Depends(require_user)):
+    path = Path(get_user_ledger(username))
+    _ensure_accounts_open(username, [p.account for p in body.postings if p.account], body.date, path)
     try:
-        replace_transaction(lineno, _format_transaction(body))
+        replace_transaction(username, lineno, _format_transaction(body))
     except (FileNotFoundError, IndexError) as e:
         raise HTTPException(status_code=404, detail=str(e))
     return {"ok": True}
 
 
 @router.delete("/{lineno}", status_code=204)
-def remove_transaction(lineno: int):
+def remove_transaction(lineno: int, username: str = Depends(require_user)):
     try:
-        delete_transaction(lineno)
+        delete_transaction(username, lineno)
     except (FileNotFoundError, IndexError) as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
-def _ensure_accounts_open(accounts: list[str], txn_date: datetime.date, path: Path) -> None:
+def _ensure_accounts_open(username: str, accounts: list[str], txn_date: datetime.date, path: Path) -> None:
     try:
-        entries, _, _ = get_ledger()
+        entries, _, _ = get_ledger(username)
     except FileNotFoundError:
         return
 
@@ -122,7 +123,6 @@ def _ensure_accounts_open(accounts: list[str], txn_date: datetime.date, path: Pa
     if not missing:
         return
 
-    # Use the earliest existing open date so new opens sort before all transactions
     existing_opens = [e for e in entries if isinstance(e, data.Open)]
     open_date = min((e.date for e in existing_opens), default=txn_date - datetime.timedelta(days=1))
 

@@ -1,40 +1,39 @@
 import os
 import threading
-from decimal import Decimal
 from pathlib import Path
 
 from beancount import loader
-from beancount.core import data, getters, realization
-from beancount.core.number import ZERO
+from beancount.core import realization
 
-from .config import BEANCOUNT_FILE
+from .config import get_user_ledger
 
-_entries: list = []
-_errors: list = []
-_options: dict = {}
-_mtime: float | None = None
+_caches: dict[str, dict] = {}
 _lock = threading.Lock()
 
 
-def _load() -> None:
-    global _entries, _errors, _options, _mtime
-    entries, errors, options = loader.load_file(BEANCOUNT_FILE)
-    _entries = entries
-    _errors = errors
-    _options = options
-    _mtime = os.path.getmtime(BEANCOUNT_FILE)
-
-
-def get_ledger() -> tuple[list, list, dict]:
-    global _mtime
-    path = Path(BEANCOUNT_FILE)
+def _path_for(username: str) -> Path:
+    path = Path(get_user_ledger(username))
     if not path.exists():
-        raise FileNotFoundError(f"Beancount file not found: {BEANCOUNT_FILE}")
+        raise FileNotFoundError(f"Beancount file not found: {path}")
+    return path
+
+
+def get_ledger(username: str) -> tuple[list, list, dict]:
+    path = _path_for(username)
     with _lock:
-        current_mtime = os.path.getmtime(BEANCOUNT_FILE)
-        if _mtime != current_mtime:
-            _load()
-    return _entries, _errors, _options
+        c = _caches.get(username)
+        current_mtime = os.path.getmtime(path)
+        if c is None or c["mtime"] != current_mtime or c["path"] != str(path):
+            entries, errors, options = loader.load_file(str(path))
+            _caches[username] = {
+                "entries": entries,
+                "errors": errors,
+                "options": options,
+                "mtime": current_mtime,
+                "path": str(path),
+            }
+        c = _caches[username]
+    return c["entries"], c["errors"], c["options"]
 
 
 def serialize_amount(amount) -> dict | None:
@@ -68,12 +67,12 @@ def serialize_transaction(entry) -> dict:
     }
 
 
-def _read_lines() -> list[str]:
-    return Path(BEANCOUNT_FILE).read_text().splitlines(keepends=True)
+def _read_lines(username: str) -> list[str]:
+    return _path_for(username).read_text().splitlines(keepends=True)
 
 
-def _write_lines(lines: list[str]) -> None:
-    Path(BEANCOUNT_FILE).write_text("".join(lines))
+def _write_lines(username: str, lines: list[str]) -> None:
+    _path_for(username).write_text("".join(lines))
 
 
 def _get_extent(lines: list[str], lineno: int) -> tuple[int, int]:
@@ -93,23 +92,29 @@ def _get_extent(lines: list[str], lineno: int) -> tuple[int, int]:
     return start, end
 
 
-def delete_transaction(lineno: int) -> None:
-    lines = _read_lines()
+def delete_transaction(username: str, lineno: int) -> None:
+    lines = _read_lines(username)
     start, end = _get_extent(lines, lineno)
     del lines[start : end + 1]
-    _write_lines(lines)
+    _write_lines(username, lines)
 
 
-def replace_transaction(lineno: int, new_text: str) -> None:
-    lines = _read_lines()
+def replace_transaction(username: str, lineno: int, new_text: str) -> None:
+    lines = _read_lines(username)
     start, end = _get_extent(lines, lineno)
     new_lines = (new_text.rstrip("\n") + "\n").splitlines(keepends=True)
     lines[start : end + 1] = new_lines
-    _write_lines(lines)
+    _write_lines(username, lines)
 
 
-def get_balances() -> dict:
-    entries, _, _ = get_ledger()
+def append_text(username: str, text: str) -> None:
+    path = _path_for(username)
+    with open(path, "a") as f:
+        f.write("\n" + text + ("\n" if not text.endswith("\n") else ""))
+
+
+def get_balances(username: str) -> dict:
+    entries, _, _ = get_ledger(username)
     real_root = realization.realize(entries)
     return _walk_real_account(real_root)
 

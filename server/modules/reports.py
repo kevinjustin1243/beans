@@ -27,8 +27,8 @@ def _filter_by_date(entries, start=None, end=None):
     ]
 
 
-def trial_balance() -> list[dict]:
-    entries, _, _ = get_ledger()
+def trial_balance(username: str) -> list[dict]:
+    entries, _, _ = get_ledger(username)
     real_root = realization.realize(entries)
     rows: list[dict] = []
     _flatten_real(real_root, rows)
@@ -43,8 +43,8 @@ def _flatten_real(real_account, rows: list, depth: int = 0) -> None:
         _flatten_real(child, rows, depth + 1)
 
 
-def balance_sheet(date: datetime.date | None = None) -> dict:
-    entries, _, options = get_ledger()
+def balance_sheet(username: str, date: datetime.date | None = None) -> dict:
+    entries, _, options = get_ledger(username)
     acct_types = _account_type_prefix(options)
 
     if date is None:
@@ -62,10 +62,11 @@ def balance_sheet(date: datetime.date | None = None) -> dict:
 
 
 def income_statement(
+    username: str,
     start: datetime.date | None = None,
     end: datetime.date | None = None,
 ) -> dict:
-    entries, _, options = get_ledger()
+    entries, _, options = get_ledger(username)
     acct_types = _account_type_prefix(options)
 
     if end is None:

@@ -21,8 +21,8 @@ class Credentials(BaseModel):
 @router.post("/login")
 def login(body: Credentials, response: Response):
     users = get_users()
-    hashed = users.get(body.username)
-    if not hashed or not verify_password(body.password, hashed):
+    user = users.get(body.username)
+    if not user or not verify_password(body.password, user["password"]):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     token = create_token(body.username)

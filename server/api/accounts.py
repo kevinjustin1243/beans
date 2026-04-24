@@ -1,21 +1,20 @@
 import datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from modules.auth import require_user
-from modules.config import BEANCOUNT_FILE
-from modules.ledger import get_ledger, get_balances, _walk_real_account
+from modules.config import get_user_ledger
+from modules.ledger import get_ledger, get_balances
 from beancount.core import getters, realization
 
-router = APIRouter(prefix="/api/accounts", tags=["accounts"], dependencies=[Depends(require_user)])
+router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
 
 @router.get("")
-def list_accounts():
+def list_accounts(username: str = Depends(require_user)):
     try:
-        entries, _, _ = get_ledger()
+        entries, _, _ = get_ledger(username)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -24,17 +23,17 @@ def list_accounts():
 
 
 @router.get("/balances")
-def account_balances():
+def account_balances(username: str = Depends(require_user)):
     try:
-        return get_balances()
+        return get_balances(username)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/{account_name:path}/balance")
-def account_balance(account_name: str):
+def account_balance(account_name: str, username: str = Depends(require_user)):
     try:
-        entries, _, _ = get_ledger()
+        entries, _, _ = get_ledger(username)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -61,9 +60,9 @@ EQUITY_OPENING = "Equity:Opening-Balances"
 
 
 @router.post("/opening-balance", status_code=201)
-def opening_balance(body: OpeningBalanceIn):
+def opening_balance(body: OpeningBalanceIn, username: str = Depends(require_user)):
     try:
-        entries, _, _ = get_ledger()
+        entries, _, _ = get_ledger(username)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -79,7 +78,8 @@ def opening_balance(body: OpeningBalanceIn):
     lines.append(f"{body.date} pad  {body.account}  {EQUITY_OPENING}\n")
     lines.append(f"{balance_date} balance {body.account}  {body.amount} {body.currency}\n")
 
-    with open(BEANCOUNT_FILE, "a") as f:
+    ledger_path = get_user_ledger(username)
+    with open(ledger_path, "a") as f:
         f.write("\n" + "".join(lines))
 
     return {"ok": True}
