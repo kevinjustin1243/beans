@@ -7,6 +7,7 @@ import Accounts from "./pages/Accounts";
 import Transactions from "./pages/Transactions";
 import Budget from "./pages/Budget";
 import Goals from "./pages/Goals";
+import Investments from "./pages/Investments";
 import Ledger from "./pages/Ledger";
 import NotFound from "./pages/NotFound";
 
@@ -29,6 +30,7 @@ const App = () => {
           <Route path="transactions" element={<Transactions />} />
           <Route path="budget" element={<Budget />} />
           <Route path="goals" element={<Goals />} />
+          <Route path="investments" element={<Investments />} />
           <Route path="ledger" element={<Ledger />} />
         </Route>
         <Route path="*" element={<NotFound />} />

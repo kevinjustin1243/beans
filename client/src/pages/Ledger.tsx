@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
-import { PlusIcon, TrashIcon, XMarkIcon } from "../components/icons";
+import { invalidateAccounts } from "../lib/accounts";
+import { AccountInput } from "../components/AccountInput";
+import { TrashIcon, XMarkIcon } from "../components/icons";
 import QueryBuilder from "../components/QueryBuilder";
 
 // ─── shared types ────────────────────────────────────────────────────────────
@@ -185,7 +187,7 @@ function DirectiveRow({ d, onDelete }: { d: Directive; onDelete: () => void }) {
         {d.lineno != null && (
           <button
             onClick={onDelete}
-            className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-opacity"
+            className="md:opacity-0 md:group-hover:opacity-100 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-opacity"
             title="Delete"
           >
             <TrashIcon className="w-3.5 h-3.5" />
@@ -209,12 +211,10 @@ const TYPE_BADGE: Record<DirectiveType, string> = {
 
 function NewDirectiveModal({
   type,
-  accounts,
   onClose,
   onSaved,
 }: {
   type: DirectiveType;
-  accounts: string[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -270,6 +270,7 @@ function NewDirectiveModal({
         const d = await r.json();
         throw new Error(d.detail ?? "Failed");
       }
+      if (type === "open" || type === "close") invalidateAccounts();
       onSaved();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -284,7 +285,7 @@ function NewDirectiveModal({
         return (
           <>
             <Field label="Account">
-              <input list="acct-list" value={account} onChange={(e) => setAccount(e.target.value)} required placeholder="Assets:Bank:Checking" className={inputCls} />
+              <AccountInput value={account} onChange={setAccount} required placeholder="Assets:Bank:Checking" />
             </Field>
             <Field label="Currencies (space-separated)">
               <input value={currencies} onChange={(e) => setCurrencies(e.target.value)} placeholder="USD" className={inputCls} />
@@ -294,14 +295,14 @@ function NewDirectiveModal({
       case "close":
         return (
           <Field label="Account">
-            <input list="acct-list" value={account} onChange={(e) => setAccount(e.target.value)} required placeholder="Assets:Bank:Checking" className={inputCls} />
+            <AccountInput value={account} onChange={setAccount} required placeholder="Assets:Bank:Checking" />
           </Field>
         );
       case "balance":
         return (
           <>
             <Field label="Account">
-              <input list="acct-list" value={account} onChange={(e) => setAccount(e.target.value)} required placeholder="Assets:Bank:Checking" className={inputCls} />
+              <AccountInput value={account} onChange={setAccount} required placeholder="Assets:Bank:Checking" />
             </Field>
             <div className="flex gap-3">
               <Field label="Amount" className="flex-1">
@@ -317,7 +318,7 @@ function NewDirectiveModal({
         return (
           <>
             <Field label="Account">
-              <input list="acct-list" value={account} onChange={(e) => setAccount(e.target.value)} required placeholder="Assets:Bank:Checking" className={inputCls} />
+              <AccountInput value={account} onChange={setAccount} required placeholder="Assets:Bank:Checking" />
             </Field>
             <Field label="Note">
               <input value={comment} onChange={(e) => setComment(e.target.value)} required placeholder="Account transferred to new bank" className={inputCls} />
@@ -355,10 +356,10 @@ function NewDirectiveModal({
         return (
           <>
             <Field label="Account to pad">
-              <input list="acct-list" value={account} onChange={(e) => setAccount(e.target.value)} required placeholder="Assets:Bank:Checking" className={inputCls} />
+              <AccountInput value={account} onChange={setAccount} required placeholder="Assets:Bank:Checking" />
             </Field>
             <Field label="Source account">
-              <input list="acct-list" value={sourceAccount} onChange={(e) => setSourceAccount(e.target.value)} required placeholder="Equity:Opening-Balances" className={inputCls} />
+              <AccountInput value={sourceAccount} onChange={setSourceAccount} required placeholder="Equity:Opening-Balances" />
             </Field>
           </>
         );
@@ -382,10 +383,6 @@ function NewDirectiveModal({
             <XMarkIcon className="w-5 h-5" />
           </button>
         </div>
-
-        <datalist id="acct-list">
-          {accounts.map((a) => <option key={a} value={a} />)}
-        </datalist>
 
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
           <Field label="Date">
@@ -423,7 +420,6 @@ function DirectivesTab() {
   const [directives, setDirectives] = useState<Directive[]>([]);
   const [filter, setFilter] = useState<DirectiveType | "all">("all");
   const [loading, setLoading] = useState(true);
-  const [accounts, setAccounts] = useState<string[]>([]);
   const [newType, setNewType] = useState<DirectiveType | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
 
@@ -438,15 +434,10 @@ function DirectivesTab() {
 
   useEffect(() => { load(); }, [filter]);
 
-  useEffect(() => {
-    apiFetch("/api/accounts")
-      .then((r) => r.json())
-      .then((d) => setAccounts(d.accounts ?? []));
-  }, []);
-
   async function handleDelete(lineno: number) {
     await apiFetch(`/api/directives/${lineno}`, { method: "DELETE" });
     setConfirmDelete(null);
+    invalidateAccounts();
     load();
   }
 
@@ -454,8 +445,8 @@ function DirectivesTab() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex gap-1 bg-slate-100 rounded-lg p-1 flex-wrap">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div className="flex gap-1 bg-slate-100 rounded-lg p-1 flex-wrap order-2 sm:order-1">
           <button
             onClick={() => setFilter("all")}
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${filter === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
@@ -471,19 +462,6 @@ function DirectivesTab() {
               {DIRECTIVE_LABELS[t]}
             </button>
           ))}
-        </div>
-
-        <div className="relative">
-          <button
-            onClick={() => setNewType(newType ? null : "open")}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-500 transition-colors"
-          >
-            <PlusIcon className="w-4 h-4" />
-            New
-          </button>
-          {newType === null && (
-            <div className="absolute right-0 mt-1 w-40 bg-white border border-slate-200 rounded-xl shadow-lg z-10 py-1" style={{ display: "none" }} />
-          )}
         </div>
       </div>
 
@@ -503,11 +481,11 @@ function DirectivesTab() {
       {loading ? (
         <p className="text-slate-400">Loading…</p>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
           {shown.length === 0 ? (
             <p className="p-8 text-center text-slate-400">No {filter === "all" ? "" : filter} directives yet.</p>
           ) : (
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[480px]">
               <thead>
                 <tr className="border-b border-slate-100">
                   <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Date</th>
@@ -545,7 +523,6 @@ function DirectivesTab() {
       {newType && (
         <NewDirectiveModal
           type={newType}
-          accounts={accounts}
           onClose={() => setNewType(null)}
           onSaved={() => { setNewType(null); load(); }}
         />
@@ -563,15 +540,15 @@ export default function Ledger() {
   const [tab, setTab] = useState<Tab>("Errors");
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-semibold text-slate-900 mb-6">Ledger</h1>
+    <div className="p-4 sm:p-8">
+      <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 mb-6">Ledger</h1>
 
-      <div className="flex gap-1 mb-8 bg-slate-100 rounded-lg p-1 w-fit">
+      <div className="flex gap-1 mb-6 sm:mb-8 bg-slate-100 rounded-lg p-1 w-full sm:w-fit">
         {tabs.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-sm font-medium transition-colors ${
               tab === t ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
             }`}
           >

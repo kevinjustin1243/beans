@@ -10,4 +10,11 @@ export default defineConfig({
     babel({ presets: [reactCompilerPreset()] }),
     tailwindcss()
   ],
+  server: {
+    host: true,                          // listen on 0.0.0.0 (LAN/VPN reachable)
+    proxy: {
+      '/api':    'http://localhost:8000',
+      '/health': 'http://localhost:8000',
+    },
+  },
 })

@@ -1,5 +1,7 @@
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { invalidateAccounts } from "../lib/accounts";
+import { AccountInput } from "../components/AccountInput";
 import { PencilIcon, PlusIcon, TrashIcon, XMarkIcon } from "../components/icons";
 
 interface Posting {
@@ -58,7 +60,6 @@ export default function Transactions() {
   const [filterStart, setFilterStart] = useState("");
   const [filterEnd, setFilterEnd] = useState("");
 
-  const [accounts, setAccounts] = useState<string[]>([]);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -83,12 +84,6 @@ export default function Transactions() {
 
   useEffect(() => { load(); }, [offset, search, filterAccount, filterStart, filterEnd]);
 
-  useEffect(() => {
-    apiFetch("/api/accounts")
-      .then((r) => r.json())
-      .then((d) => setAccounts(d.accounts ?? []));
-  }, []);
-
   async function handleDelete(id: string) {
     const r = await apiFetch(`/api/transactions/${id}`, { method: "DELETE" });
     if (!r.ok) {
@@ -96,6 +91,7 @@ export default function Transactions() {
       setError(e.detail ?? "Delete failed");
     } else {
       setConfirmDelete(null);
+      invalidateAccounts();
       load();
     }
   }
@@ -103,6 +99,7 @@ export default function Transactions() {
   function onSaved() {
     setShowAdd(false);
     setEditing(null);
+    invalidateAccounts();
     load();
   }
 
@@ -110,46 +107,48 @@ export default function Transactions() {
   const page = Math.floor(offset / limit) + 1;
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Transactions</h1>
+    <div className="p-4 sm:p-8">
+      <div className="flex items-center justify-between mb-6 gap-3">
+        <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Transactions</h1>
         <button
           onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-500 transition-colors"
+          className="flex items-center gap-2 bg-indigo-600 text-white px-3 sm:px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-500 transition-colors shrink-0"
         >
           <PlusIcon className="w-4 h-4" />
           Add
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2 sm:gap-3 mb-6">
         <input
           type="text"
           placeholder="Search narration…"
           value={search}
           onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
-          className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48"
+          className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 sm:w-48"
         />
-        <input
-          type="text"
-          placeholder="Filter by account…"
-          value={filterAccount}
-          onChange={(e) => { setFilterAccount(e.target.value); setOffset(0); }}
-          className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48"
-        />
-        <input type="date" value={filterStart} onChange={(e) => { setFilterStart(e.target.value); setOffset(0); }} className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-        <input type="date" value={filterEnd} onChange={(e) => { setFilterEnd(e.target.value); setOffset(0); }} className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        <div className="sm:w-48">
+          <AccountInput
+            value={filterAccount}
+            onChange={(v) => { setFilterAccount(v); setOffset(0); }}
+            placeholder="Filter by account…"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:contents">
+          <input type="date" value={filterStart} onChange={(e) => { setFilterStart(e.target.value); setOffset(0); }} className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <input type="date" value={filterEnd} onChange={(e) => { setFilterEnd(e.target.value); setOffset(0); }} className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
       </div>
 
       {error && <p className="text-red-600 mb-4">{error}</p>}
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         {loading ? (
           <div className="p-8 text-center text-slate-400">Loading…</div>
         ) : transactions.length === 0 ? (
           <div className="p-8 text-center text-slate-400">No transactions found.</div>
         ) : (
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="border-b border-slate-100">
                 <th className="text-left px-4 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Date</th>
@@ -200,7 +199,7 @@ export default function Transactions() {
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-1 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => setEditing(t)}
                           title="Edit"
@@ -238,7 +237,6 @@ export default function Transactions() {
 
       {(showAdd || editing) && (
         <TransactionModal
-          accounts={accounts}
           editing={editing ?? undefined}
           onClose={() => { setShowAdd(false); setEditing(null); }}
           onSaved={onSaved}
@@ -249,12 +247,10 @@ export default function Transactions() {
 }
 
 function TransactionModal({
-  accounts,
   editing,
   onClose,
   onSaved,
 }: {
-  accounts: string[];
   editing?: Transaction;
   onClose: () => void;
   onSaved: () => void;
@@ -274,7 +270,7 @@ function TransactionModal({
     setPostings((prev) => prev.map((p, idx) => (idx === i ? { ...p, [field]: value } : p)));
   }
 
-  async function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
     setError("");
     setSaving(true);
@@ -350,19 +346,16 @@ function TransactionModal({
 
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-2">Postings</label>
-            <datalist id="accounts-list">
-              {accounts.map((a) => <option key={a} value={a} />)}
-            </datalist>
             <div className="space-y-2">
               {postings.map((p, i) => (
                 <div key={i} className="flex gap-2 items-start">
-                  <input
-                    list="accounts-list"
-                    value={p.account}
-                    onChange={(e) => updatePosting(i, "account", e.target.value)}
-                    placeholder="Account"
-                    className="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 flex-1"
-                  />
+                  <div className="flex-1">
+                    <AccountInput
+                      value={p.account}
+                      onChange={(v) => updatePosting(i, "account", v)}
+                      placeholder="Account"
+                    />
+                  </div>
                   <input
                     type="number"
                     step="0.01"

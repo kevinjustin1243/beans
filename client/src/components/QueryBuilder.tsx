@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { AccountInput } from "./AccountInput";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -237,7 +238,7 @@ function BuilderPanel({
   }
 
   return (
-    <div className="space-y-1 pr-6 border-r border-slate-200 h-full overflow-y-auto">
+    <div className="space-y-1 lg:pr-6 lg:border-r border-slate-200 h-full overflow-y-auto">
       {/* SELECT */}
       <Section title="SELECT">
         <div className="flex flex-wrap gap-1.5 mb-2">
@@ -301,11 +302,10 @@ function BuilderPanel({
                 ))}
               </select>
             ) : (
-              <input
+              <AccountInput
                 value={b.acctFilter}
-                onChange={(e) => set({ acctFilter: e.target.value })}
+                onChange={(v) => set({ acctFilter: v })}
                 placeholder={b.acctMode === "exact" ? "Assets:Bank:Checking" : "Expenses"}
-                className={inputCls}
               />
             )}
           </div>
@@ -640,16 +640,16 @@ export default function QueryBuilder() {
         </button>
       </div>
 
-      {/* Builder mode: two-column */}
+      {/* Builder mode: stacks on mobile, two-column on lg */}
       {mode === "builder" && (
-        <div className="grid grid-cols-5 gap-0 bg-white rounded-xl border border-slate-200 mb-4 overflow-hidden">
-          {/* Left: builder form */}
-          <div className="col-span-2 p-5 overflow-y-auto max-h-[520px]">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-0 bg-white rounded-xl border border-slate-200 mb-4 overflow-hidden">
+          {/* Builder form */}
+          <div className="lg:col-span-2 p-4 sm:p-5 overflow-y-auto lg:max-h-[520px]">
             <BuilderPanel b={builder} set={patch} />
           </div>
 
-          {/* Right: BQL preview */}
-          <div className="col-span-3 bg-slate-950 flex flex-col">
+          {/* BQL preview */}
+          <div className="lg:col-span-3 bg-slate-950 flex flex-col min-h-[200px]">
             <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800">
               <span className="text-xs text-slate-400 font-mono">Generated BQL</span>
               <div className="flex items-center gap-2">

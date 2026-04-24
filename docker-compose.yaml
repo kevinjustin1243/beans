@@ -1,0 +1,22 @@
+services:
+  frontend:
+    image: ghcr.io/kevinjustin1243/beans-front:latest
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/kevinjustin1243/beans-back:latest
+    expose:
+      - "8000"
+    environment:
+      - HOME=/root
+    volumes:
+      # config.yaml + beans.db both live at ~/.config/beans/ inside the container.
+      - ${BEANS_CONFIG_DIR:-./config}:/root/.config/beans
+      # Ledger file path is whatever `ledger:` in config.yaml points to;
+      # mount the host directory containing it to the same path inside the container.
+      - ${BEANS_LEDGER_DIR:-./ledger}:/data/ledger
+    restart: unless-stopped

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { AccountInput } from "../components/AccountInput";
 import { PencilIcon, PlusIcon, TrashIcon, XMarkIcon } from "../components/icons";
 
 interface Goal {
@@ -87,20 +88,21 @@ export default function Goals() {
   const totalTarget = withCurrent.reduce((s, g) => s + g.target_amount, 0);
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Goals</h1>
+    <div className="p-4 sm:p-8">
+      <div className="flex items-center justify-between mb-6 gap-3">
+        <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Goals</h1>
         <button
           onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-500 transition-colors"
+          className="flex items-center gap-2 bg-indigo-600 text-white px-3 sm:px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-500 transition-colors shrink-0"
         >
           <PlusIcon className="w-4 h-4" />
-          Add goal
+          <span className="hidden sm:inline">Add goal</span>
+          <span className="sm:hidden">Add</span>
         </button>
       </div>
 
       {goals.length > 0 && (
-        <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">
           <div className="bg-white rounded-xl border border-slate-200 p-5">
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">
               Total Saved
@@ -299,11 +301,10 @@ function GoalModal({
             <label className="block text-xs font-medium text-slate-600 mb-1">
               Linked account <span className="text-slate-400">(optional)</span>
             </label>
-            <input
+            <AccountInput
               value={form.account}
-              onChange={(e) => setForm((p) => ({ ...p, account: e.target.value }))}
+              onChange={(v) => setForm((p) => ({ ...p, account: v }))}
               placeholder="e.g. Assets:Savings"
-              className={inputCls}
             />
             <p className="text-xs text-slate-400 mt-1">
               If set, the current amount is read from your ledger automatically.

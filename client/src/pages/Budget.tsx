@@ -138,18 +138,18 @@ export default function Budget() {
   const maxAmount = Math.max(...flatExpenses.map((a) => a.amount), 1);
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Budget</h1>
-        <div className="flex items-center gap-3 text-sm">
-          <label className="text-slate-500">From</label>
+    <div className="p-4 sm:p-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-3">
+        <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Budget</h1>
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-3 text-sm">
+          <label className="text-slate-500 hidden sm:inline">From</label>
           <input
             type="date"
             value={start}
             onChange={(e) => setStart(e.target.value)}
             className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
-          <label className="text-slate-500">To</label>
+          <label className="text-slate-500 hidden sm:inline">To</label>
           <input
             type="date"
             value={end}
@@ -166,7 +166,7 @@ export default function Budget() {
       ) : (
         data && (
           <>
-            <div className="grid grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">
               <div className="bg-white rounded-xl border border-slate-200 p-5">
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">
                   Income

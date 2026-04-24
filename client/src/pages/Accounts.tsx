@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
+import { invalidateAccounts } from "../lib/accounts";
+import { AccountInput } from "../components/AccountInput";
 import { PlusIcon, XMarkIcon } from "../components/icons";
 
 interface AccountNode {
@@ -76,9 +78,9 @@ function SummaryCard({
   color: string;
 }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5">
-      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1">{label}</p>
-      <p className={`text-2xl font-semibold ${color}`}>{value}</p>
+    <div className="bg-white rounded-lg border border-slate-200 p-5">
+      <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">{label}</p>
+      <p className={`text-2xl font-semibold ${color} mt-1`}>{value}</p>
     </div>
   );
 }
@@ -111,21 +113,22 @@ export default function Accounts() {
   const hasSummary = root && (assetsUSD !== 0 || liabUSD !== 0);
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">Accounts</h1>
+    <div className="p-3 sm:p-8">
+      <div className="flex items-center justify-between mb-4 sm:mb-6 gap-3">
+        <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">Accounts</h1>
         <button
           onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-500 transition-colors"
+          className="flex items-center gap-2 bg-indigo-600 text-white px-3 sm:px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-500 transition-colors shrink-0"
         >
           <PlusIcon className="w-4 h-4" />
-          Opening Balance
+          <span className="hidden sm:inline">Opening Balance</span>
+          <span className="sm:hidden">Add</span>
         </button>
       </div>
 
       {/* Net worth summary */}
       {hasSummary && (
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
           <SummaryCard
             label="Total Assets"
             value={fmtUSD(assetsUSD)}
@@ -146,15 +149,15 @@ export default function Accounts() {
 
       {error && <p className="text-red-600 mb-4">{error}</p>}
 
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="bg-white rounded-lg border border-slate-200 overflow-x-auto">
         {loading ? (
-          <div className="p-8 text-center text-slate-400">Loading…</div>
+          <div className="p-6 text-center text-slate-400 text-sm">Loading…</div>
         ) : (
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100">
-                <th className="text-left px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Account</th>
-                <th className="text-right px-6 py-3 text-xs font-medium text-slate-500 uppercase tracking-wider">Balance</th>
+                <th className="text-left px-3 sm:px-6 py-2 sm:py-3 text-[10px] sm:text-xs font-medium text-slate-500 uppercase tracking-wider">Account</th>
+                <th className="text-right px-3 sm:px-6 py-2 sm:py-3 text-[10px] sm:text-xs font-medium text-slate-500 uppercase tracking-wider">Balance</th>
               </tr>
             </thead>
             <tbody>
@@ -162,14 +165,10 @@ export default function Accounts() {
                 <tr
                   key={row.account}
                   className={`border-b border-slate-50 ${
-                    isTopLevel(row.account)
-                      ? "bg-slate-50"
-                      : row.isLeaf
-                        ? "hover:bg-slate-50"
-                        : "hover:bg-slate-50"
+                    isTopLevel(row.account) ? "bg-slate-50" : "hover:bg-slate-50"
                   }`}
                 >
-                  <td className="px-6 py-2.5">
+                  <td className="px-3 sm:px-6 py-1 sm:py-2.5">
                     <span
                       style={{ paddingLeft: `${(row.depth - 1) * 16}px` }}
                       className={
@@ -184,12 +183,9 @@ export default function Accounts() {
                         ? row.account
                         : row.account.split(":").pop()}
                     </span>
-                    {!isTopLevel(row.account) && (
-                      <span className="ml-2 text-xs text-slate-400">{row.account}</span>
-                    )}
                   </td>
-                  <td className="px-6 py-2.5 text-right font-mono text-slate-700">
-                    <span className={!row.isLeaf && !isTopLevel(row.account) ? "text-slate-400 text-xs" : ""}>
+                  <td className="px-3 sm:px-6 py-1 sm:py-2.5 text-right font-mono whitespace-nowrap">
+                    <span className={!row.isLeaf && !isTopLevel(row.account) ? "text-slate-400 text-xs" : "text-slate-700"}>
                       {formatBalance(row.totalBalance)}
                     </span>
                   </td>
@@ -233,6 +229,7 @@ function OpeningBalanceModal({ onClose, onSaved }: { onClose: () => void; onSave
         const e = await r.json();
         throw new Error(e.detail ?? "Failed to save");
       }
+      invalidateAccounts();
       onSaved();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -254,13 +251,11 @@ function OpeningBalanceModal({ onClose, onSaved }: { onClose: () => void; onSave
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Account name</label>
-            <input
-              type="text"
+            <AccountInput
               value={account}
-              onChange={(e) => setAccount(e.target.value)}
+              onChange={setAccount}
               required
               placeholder="e.g. Assets:Bank:Checking"
-              className={inputCls}
             />
             <p className="mt-1 text-xs text-slate-400">
               Use <code>Assets:</code> for bank accounts, <code>Liabilities:</code> for credit cards.

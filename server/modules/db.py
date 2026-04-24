@@ -28,4 +28,26 @@ def init_db() -> None:
                 manual_current REAL NOT NULL DEFAULT 0
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS investments (
+                id          TEXT PRIMARY KEY,
+                ticker      TEXT NOT NULL,
+                name        TEXT,
+                shares      REAL NOT NULL,
+                cost_basis  REAL NOT NULL,
+                created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS investment_quotes (
+                ticker         TEXT PRIMARY KEY,
+                price          REAL,
+                currency       TEXT DEFAULT 'USD',
+                name           TEXT,
+                prev_close     REAL,
+                change         REAL,
+                change_percent REAL,
+                fetched_at     TEXT
+            )
+        """)
         conn.commit()
