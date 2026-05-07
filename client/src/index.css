@@ -1,1 +1,53 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Geist", system-ui, -apple-system, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+  --font-geist: "Geist", system-ui, sans-serif;
+  --font-inter: "Inter", system-ui, sans-serif;
+}
+
+:root { color-scheme: dark; }
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: "Geist", system-ui, -apple-system, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+  background: #0a0a0a;
+  color: #e5e5e5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.font-geist { font-family: "Geist", system-ui, sans-serif; }
+.font-inter  { font-family: "Inter", system-ui, sans-serif; }
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  border: 2px solid #0a0a0a;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.12); }
+
+/* Subtle noise overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+  background-size: 3px 3px;
+  z-index: 100;
+  mix-blend-mode: overlay;
+}
+
+/* Page enter animation */
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter { animation: pageEnter 0.32s cubic-bezier(0.22, 1, 0.36, 1); }
