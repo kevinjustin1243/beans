@@ -350,6 +350,9 @@ export default function Investments() {
               </tbody>
             </table>
           </div>
+
+          {/* Portfolio analysis — Sharpe, beta, correlation, MV optimization */}
+          <PortfolioAnalysisPanel />
         </>
       )}
 
@@ -571,4 +574,270 @@ function InvestmentModal({
       </div>
     </div>
   );
+}
+
+// ─── Portfolio analysis panel ─────────────────────────────────────────────────
+
+interface PerStock {
+  symbol: string;
+  shares: number;
+  price: number;
+  market_value: number;
+  annualized_return: number;
+  volatility: number;
+  sharpe_ratio: number;
+  beta: number;
+  max_drawdown: number;
+  spark: number[];
+}
+
+interface PortfolioStats {
+  total_value: number;
+  annualized_return: number;
+  volatility: number;
+  sharpe_ratio: number;
+  beta: number;
+  diversification_score: number;
+}
+
+interface CorrPair {
+  pair: string;
+  correlation: number;
+}
+
+interface OptimWeight {
+  symbol: string;
+  current_weight: number;
+  optimal_weight: number;
+}
+
+interface Rec {
+  type: string;
+  title: string;
+  description: string;
+  priority: "high" | "medium" | "low";
+}
+
+interface AnalysisResult {
+  per_stock: PerStock[];
+  portfolio: PortfolioStats | Record<string, never>;
+  correlation: CorrPair[];
+  optimization: OptimWeight[];
+  recommendations: Rec[];
+}
+
+function PortfolioAnalysisPanel() {
+  const [data, setData] = useState<AnalysisResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    apiFetch("/api/investments/analysis")
+      .then((r) => (r.ok ? r.json() : r.json().then((e) => Promise.reject(e.detail))))
+      .then((d: AnalysisResult) => { if (!cancelled) setData(d); })
+      .catch((e) => { if (!cancelled) setError(String(e)); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 p-5 text-sm text-slate-400">
+        Analyzing portfolio (fetching 1y history)…
+      </div>
+    );
+  }
+  if (error || !data || data.per_stock.length === 0) {
+    return (
+      <div className="bg-white rounded-xl border border-slate-200 p-5 text-sm text-slate-400 italic">
+        {error || "Not enough price history to analyze yet."}
+      </div>
+    );
+  }
+
+  const p = data.portfolio as PortfolioStats;
+  const hasPortfolio = Object.keys(p).length > 0;
+
+  return (
+    <section className="space-y-4">
+      {hasPortfolio && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
+            Portfolio metrics (1y trailing)
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+            <Metric label="Ann. return" value={fmtPct(p.annualized_return)} positive={p.annualized_return >= 0} />
+            <Metric label="Volatility" value={fmtPct(p.volatility)} muted />
+            <Metric label="Sharpe" value={p.sharpe_ratio.toFixed(2)} positive={p.sharpe_ratio >= 1} />
+            <Metric label="Beta" value={p.beta.toFixed(2)} muted />
+            <Metric label="Diversification" value={`${p.diversification_score}/100`} positive={p.diversification_score >= 60} />
+            <Metric label="Total value" value={fmtUSD(p.total_value)} muted />
+          </div>
+        </div>
+      )}
+
+      {/* Per-stock metrics */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+          Per-holding analytics
+        </h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs text-slate-500 uppercase tracking-wider border-b border-slate-100">
+                <th className="text-left px-3 py-2">Ticker</th>
+                <th className="text-right px-3 py-2">Ann. return</th>
+                <th className="text-right px-3 py-2">Volatility</th>
+                <th className="text-right px-3 py-2">Sharpe</th>
+                <th className="text-right px-3 py-2">Beta</th>
+                <th className="text-right px-3 py-2">Max DD</th>
+                <th className="text-right px-3 py-2">Spark</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.per_stock.map((s) => (
+                <tr key={s.symbol} className="border-b border-slate-50">
+                  <td className="px-3 py-2 font-semibold text-slate-800">{s.symbol}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${s.annualized_return >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                    {fmtPct(s.annualized_return)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">{fmtPct(s.volatility)}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${s.sharpe_ratio >= 1 ? "text-emerald-600" : s.sharpe_ratio < 0 ? "text-red-500" : "text-slate-700"}`}>
+                    {s.sharpe_ratio.toFixed(2)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">{s.beta.toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-red-500">{fmtPct(s.max_drawdown)}</td>
+                  <td className="px-3 py-2 text-right">
+                    {s.spark.length >= 2 && (
+                      <span className="inline-block">
+                        <Sparkline values={s.spark} positive={s.annualized_return >= 0} />
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Recommendations */}
+      {data.recommendations.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+            Recommendations
+          </h3>
+          <ul className="space-y-2">
+            {data.recommendations.map((r, i) => (
+              <li key={i} className="flex gap-3 p-3 rounded-lg border border-slate-100">
+                <span className={`w-1 rounded-full ${recBar(r.priority)}`} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-slate-900 text-sm">{r.title}</div>
+                  <div className="text-sm text-slate-600 mt-0.5">{r.description}</div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Optimization */}
+      {data.optimization.length > 1 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+            Mean-variance optimized weights
+          </h3>
+          <ul className="space-y-2">
+            {data.optimization.map((o) => {
+              const delta = o.optimal_weight - o.current_weight;
+              return (
+                <li key={o.symbol} className="flex items-center gap-3 text-sm">
+                  <span className="font-semibold text-slate-800 w-16 shrink-0">{o.symbol}</span>
+                  <div className="flex-1 relative h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="absolute inset-y-0 left-0 bg-slate-300 rounded-full"
+                      style={{ width: `${Math.min(100, o.current_weight)}%` }}
+                    />
+                    <div
+                      className="absolute inset-y-0 left-0 bg-indigo-500 rounded-full opacity-70"
+                      style={{ width: `${Math.min(100, o.optimal_weight)}%` }}
+                    />
+                  </div>
+                  <span className="text-xs tabular-nums w-28 text-right">
+                    <span className="text-slate-500">{o.current_weight.toFixed(0)}%</span>
+                    <span className="text-slate-300"> → </span>
+                    <span className={`font-medium ${delta > 0 ? "text-emerald-600" : delta < 0 ? "text-red-500" : "text-slate-700"}`}>
+                      {o.optimal_weight.toFixed(0)}%
+                    </span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="text-[10px] text-slate-400 mt-3">
+            Optimum sampled via 10k random portfolios maximizing Sharpe at the 1-year horizon.
+          </p>
+        </div>
+      )}
+
+      {/* Correlation pairs */}
+      {data.correlation.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+            Pairwise correlation
+          </h3>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-sm">
+            {data.correlation.map((c, i) => (
+              <li key={i} className="flex items-center justify-between gap-2 px-3 py-1.5 rounded bg-slate-50">
+                <span className="font-mono text-slate-700">{c.pair}</span>
+                <span className={`tabular-nums font-medium ${corrTone(c.correlation)}`}>
+                  {c.correlation.toFixed(2)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  positive,
+  muted,
+}: {
+  label: string;
+  value: string;
+  positive?: boolean;
+  muted?: boolean;
+}) {
+  const color = muted
+    ? "text-slate-800"
+    : positive === undefined
+      ? "text-slate-800"
+      : positive
+        ? "text-emerald-600"
+        : "text-red-500";
+  return (
+    <div>
+      <div className="text-[10px] text-slate-500 uppercase tracking-wider">{label}</div>
+      <div className={`text-lg font-semibold tabular-nums ${color}`}>{value}</div>
+    </div>
+  );
+}
+
+function recBar(priority: "high" | "medium" | "low"): string {
+  if (priority === "high") return "bg-red-400";
+  if (priority === "medium") return "bg-amber-400";
+  return "bg-indigo-400";
+}
+
+function corrTone(c: number): string {
+  if (c > 0.75) return "text-red-500";
+  if (c < -0.25) return "text-emerald-600";
+  return "text-slate-700";
 }

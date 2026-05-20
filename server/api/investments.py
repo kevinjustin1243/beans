@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from modules.auth import require_user
 from modules.db import get_conn
+from modules.portfolio import analyze_portfolio
 from modules.quotes import fetch_history, fetch_quote
 
 router = APIRouter(prefix="/api/investments", tags=["investments"])
@@ -189,6 +190,28 @@ def delete_investment(inv_id: str, username: str = Depends(require_user)):
             "DELETE FROM investments WHERE id = %s AND username = %s",
             (inv_id, username),
         )
+
+
+@router.get("/analysis")
+def portfolio_analysis(username: str = Depends(require_user)):
+    """Full portfolio metrics: Sharpe, beta, correlation, MV-optimized weights.
+
+    Pulls 1 year of daily closes per held ticker from Yahoo via the existing
+    quotes helper, computes per-stock and aggregate metrics in
+    ``modules.portfolio``, and surfaces a set of rule-based recommendations
+    (concentration, correlated holdings, rebalance opportunities, etc.).
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT ticker, shares, cost_basis FROM investments WHERE username = %s",
+            (username,),
+        ).fetchall()
+
+    holdings = [
+        {"symbol": r["ticker"], "shares": float(r["shares"]), "avg_cost": float(r["cost_basis"])}
+        for r in rows
+    ]
+    return analyze_portfolio(holdings)
 
 
 @router.get("/{ticker}/history")

@@ -40,6 +40,52 @@ def fetch_quote(ticker: str) -> dict:
     }
 
 
+def fetch_quote_with_spark(ticker: str, spark_points: int = 7) -> dict:
+    """Single Yahoo call that returns both a quote and a small spark.
+
+    Uses ``range=1mo&interval=1d`` so we get ~22 trading-day closes; the
+    current quote is the last close (or ``regularMarketPrice``), the
+    previous close is the second-to-last, and the spark is the trailing
+    ``spark_points`` closes. Saves us a round-trip when callers want both.
+    """
+    url = f"{YAHOO_BASE}/{urllib.parse.quote(ticker)}?range=1mo&interval=1d"
+    req = urllib.request.Request(url, headers=HEADERS)
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.load(resp)
+
+    err = data.get("chart", {}).get("error")
+    if err:
+        raise ValueError(err.get("description") or str(err))
+
+    results = data["chart"].get("result")
+    if not results:
+        raise ValueError(f"No data for {ticker}")
+
+    meta = results[0]["meta"]
+    closes_raw = (results[0].get("indicators", {}).get("quote", [{}])[0].get("close") or [])
+    closes = [float(c) for c in closes_raw if c is not None]
+    if not closes:
+        raise ValueError(f"No close data for {ticker}")
+
+    price = float(meta.get("regularMarketPrice") or closes[-1])
+    prev = float(meta.get("previousClose") or (closes[-2] if len(closes) >= 2 else price))
+    change = price - prev
+    change_pct = (change / prev * 100) if prev else 0.0
+
+    spark = [round(c, 2) for c in closes[-spark_points:]]
+
+    return {
+        "ticker": meta["symbol"],
+        "price": price,
+        "currency": meta.get("currency", "USD"),
+        "name": meta.get("longName") or meta.get("shortName") or meta["symbol"],
+        "prev_close": prev,
+        "change": change,
+        "change_percent": change_pct,
+        "spark": spark,
+    }
+
+
 def fetch_history(ticker: str, range_: str = "1mo") -> list[dict]:
     """Return [{date, close}, ...] for the requested range."""
     valid = {"1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "10y", "ytd", "max"}

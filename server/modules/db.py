@@ -129,6 +129,11 @@ _DDL: list[str] = [
     "ALTER TABLE budget_targets ADD COLUMN IF NOT EXISTS color TEXT",
     "ALTER TABLE investments    ADD COLUMN IF NOT EXISTS asset_type TEXT",
     "ALTER TABLE investments    ADD COLUMN IF NOT EXISTS sector     TEXT",
+    # ── Stocks polish: watchlist price alerts + cached sparkline (JSON list
+    # of recent closes; stored as TEXT so the table stays driver-portable).
+    "ALTER TABLE watchlist         ADD COLUMN IF NOT EXISTS alert_above DOUBLE PRECISION",
+    "ALTER TABLE watchlist         ADD COLUMN IF NOT EXISTS alert_below DOUBLE PRECISION",
+    "ALTER TABLE investment_quotes ADD COLUMN IF NOT EXISTS spark       TEXT",
 ]
 
 

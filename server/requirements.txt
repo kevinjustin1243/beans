@@ -6,3 +6,4 @@ pyyaml
 bcrypt
 python-jose[cryptography]
 psycopg[binary]>=3.2
+numpy>=1.26

@@ -16,7 +16,17 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode(), hashed.encode())
+    """Compare a plaintext password with a stored bcrypt hash.
+
+    bcrypt.checkpw raises ValueError on malformed stored hashes (e.g. a
+    placeholder string in config.yaml). Treat any such failure as a failed
+    auth — returning False — so the login endpoint sees a clean 401
+    rather than bubbling up a 500.
+    """
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except (ValueError, TypeError):
+        return False
 
 
 def create_token(username: str) -> str:

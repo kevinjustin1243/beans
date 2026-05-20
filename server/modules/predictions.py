@@ -164,6 +164,46 @@ def project_net_worth(snapshots: list[dict]) -> list[dict]:
 # ── Savings trend ──────────────────────────────────────────────────────────────
 
 
+def project_debt_payoff(liabilities: list[dict]) -> list[dict]:
+    """Simulate month-by-month amortization across all liabilities.
+
+    Returns 7 quarterly snapshots (Now + 6 quarters ≈ 18 months). For each
+    quarter, every liability is paid down month-by-month using its APR and
+    fixed monthly payment, then balances are summed.
+
+    Input: ``[{"name", "balance", "monthly_payment", "rate"}]`` where ``rate``
+    is the APR in percent (e.g. 5.25 for 5.25%).
+    """
+    today_first = datetime.date.today().replace(day=1)
+    current_year = today_first.year
+    result: list[dict] = []
+
+    for q in range(7):  # 0..6 → Now, +3mo, +6mo, ..., +18mo
+        months = q * 3
+        total_remaining = 0.0
+        for liab in liabilities:
+            balance = float(liab.get("balance") or 0)
+            monthly_rate = float(liab.get("rate") or 0) / 100 / 12
+            payment = float(liab.get("monthly_payment") or 0)
+            b = balance
+            for _ in range(months):
+                if b <= 0:
+                    break
+                interest = b * monthly_rate
+                principal = min(payment - interest, b) if payment > interest else 0
+                if principal <= 0:
+                    # Negative-amortizing or zero-payment loan — no progress made,
+                    # bail to avoid an infinite shrink-stall.
+                    break
+                b = max(0.0, b - principal)
+            total_remaining += b
+
+        label = "Now" if q == 0 else _label_for(_add_months(today_first, months), current_year)
+        result.append({"month": label, "balance": round(total_remaining)})
+
+    return result
+
+
 def project_savings_trend(snapshots: list[dict]) -> list[dict]:
     """Extend a savings history 3 months forward via linear extrapolation."""
     if not snapshots:
