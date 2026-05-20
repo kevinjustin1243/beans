@@ -3,6 +3,7 @@ import { AuthProvider } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import Overview from "./pages/Overview";
 import Accounts from "./pages/Accounts";
 import Transactions from "./pages/Transactions";
 import Budget from "./pages/Budget";
@@ -25,7 +26,8 @@ const App = () => {
             </ProtectedRoute>
           }
         >
-          <Route index element={<Navigate to="transactions" replace />} />
+          <Route index element={<Overview />} />
+          <Route path="overview" element={<Overview />} />
           <Route path="accounts" element={<Accounts />} />
           <Route path="transactions" element={<Transactions />} />
           <Route path="budget" element={<Budget />} />

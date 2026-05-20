@@ -3,6 +3,14 @@ interface IconProps {
 }
 
 // Nav icons — strokeWidth 1.5
+export function HomeIcon({ className }: IconProps) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12L12 3l9.75 9M4.5 9.75v9.75A1.5 1.5 0 006 21h3v-6.75A1.5 1.5 0 0110.5 12.75h3A1.5 1.5 0 0115 14.25V21h3a1.5 1.5 0 001.5-1.5V9.75" />
+    </svg>
+  );
+}
+
 export function CreditCardIcon({ className }: IconProps) {
   return (
     <svg className={className} fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">

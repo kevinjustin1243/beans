@@ -7,9 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.accounts import router as accounts_router
 from api.auth import router as auth_router
 from api.budget import router as budget_router
+from api.dashboard import router as dashboard_router
 from api.directives import router as directives_router
 from api.goals import router as goals_router
 from api.investments import router as investments_router
+from api.predictions import router as predictions_router
 from api.query import router as query_router
 from api.reports import router as reports_router
 from api.transactions import router as transactions_router
@@ -48,6 +50,8 @@ app.include_router(budget_router)
 app.include_router(goals_router)
 app.include_router(directives_router)
 app.include_router(investments_router)
+app.include_router(dashboard_router)
+app.include_router(predictions_router)
 
 
 @app.get("/health")

@@ -9,11 +9,13 @@ import {
   BookOpenIcon,
   CreditCardIcon,
   FlagIcon,
+  HomeIcon,
   ListBulletIcon,
   XMarkIcon,
 } from "../components/icons";
 
 const nav = [
+  { to: "overview", label: "Overview", icon: <HomeIcon className="w-5 h-5" /> },
   { to: "accounts", label: "Accounts", icon: <CreditCardIcon className="w-5 h-5" /> },
   { to: "transactions", label: "Transactions", icon: <ListBulletIcon className="w-5 h-5" /> },
   { to: "budget", label: "Budget", icon: <BanknoteIcon className="w-5 h-5" /> },
