@@ -1,70 +1,113 @@
-import sqlite3
-from pathlib import Path
+"""Postgres connection + schema bootstrapping.
 
-_DB_PATH = Path.home() / ".config" / "beans" / "beans.db"
+Connection details come from the ``DATABASE_URL`` env var (libpq URI form,
+e.g. ``postgres://beans:beans@db:5432/beans``). ``get_conn()`` returns a
+psycopg3 connection with ``dict_row`` row factory so callers can keep using
+``row["column"]`` access.
+
+``init_db()`` is called from the FastAPI lifespan, not at import time, so the
+app can be inspected (``--help``, OpenAPI generation, tests) without a live
+database, and so it can retry while Postgres is still coming up in compose.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import time
+
+import psycopg
+from psycopg.rows import dict_row
+
+log = logging.getLogger(__name__)
 
 
-def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def _database_url() -> str:
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        raise RuntimeError(
+            "DATABASE_URL is not set. Example: "
+            "postgres://beans:beans@db:5432/beans"
+        )
+    return url
 
 
-_TABLES = [
-    (
-        "budget_targets",
-        "user TEXT NOT NULL, account TEXT NOT NULL, amount REAL NOT NULL, PRIMARY KEY (user, account)",
-        "account, amount",
-    ),
-    (
-        "goals",
-        "id TEXT PRIMARY KEY, user TEXT NOT NULL, name TEXT NOT NULL, target_amount REAL NOT NULL, "
-        "currency TEXT NOT NULL DEFAULT 'USD', account TEXT NOT NULL DEFAULT '', "
-        "manual_current REAL NOT NULL DEFAULT 0",
-        "id, name, target_amount, currency, account, manual_current",
-    ),
-    (
-        "investments",
-        "id TEXT PRIMARY KEY, user TEXT NOT NULL, ticker TEXT NOT NULL, name TEXT, "
-        "shares REAL NOT NULL, cost_basis REAL NOT NULL, "
-        "created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP",
-        "id, ticker, name, shares, cost_basis, created_at",
-    ),
+def get_conn() -> psycopg.Connection:
+    """Return a new dict-row Postgres connection.
+
+    Used as a context manager by callers, so the connection is committed
+    (or rolled back) and closed at the end of each request.
+    """
+    return psycopg.connect(_database_url(), row_factory=dict_row)
+
+
+_DDL: list[str] = [
+    """
+    CREATE TABLE IF NOT EXISTS budget_targets (
+        username TEXT NOT NULL,
+        account  TEXT NOT NULL,
+        amount   DOUBLE PRECISION NOT NULL,
+        PRIMARY KEY (username, account)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS goals (
+        id              TEXT PRIMARY KEY,
+        username        TEXT NOT NULL,
+        name            TEXT NOT NULL,
+        target_amount   DOUBLE PRECISION NOT NULL,
+        currency        TEXT NOT NULL DEFAULT 'USD',
+        account         TEXT NOT NULL DEFAULT '',
+        manual_current  DOUBLE PRECISION NOT NULL DEFAULT 0
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS investments (
+        id          TEXT PRIMARY KEY,
+        username    TEXT NOT NULL,
+        ticker      TEXT NOT NULL,
+        name        TEXT,
+        shares      DOUBLE PRECISION NOT NULL,
+        cost_basis  DOUBLE PRECISION NOT NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    # Quote cache is global market data - shared across users.
+    """
+    CREATE TABLE IF NOT EXISTS investment_quotes (
+        ticker         TEXT PRIMARY KEY,
+        price          DOUBLE PRECISION,
+        currency       TEXT DEFAULT 'USD',
+        name           TEXT,
+        prev_close     DOUBLE PRECISION,
+        change         DOUBLE PRECISION,
+        change_percent DOUBLE PRECISION,
+        fetched_at     TIMESTAMPTZ
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS goals_username_idx ON goals (username)",
+    "CREATE INDEX IF NOT EXISTS investments_username_idx ON investments (username)",
 ]
 
 
-def _ensure_with_user(conn, table: str, schema: str, copy_cols: str) -> None:
-    info = conn.execute(f"PRAGMA table_info({table})").fetchall()
-    cols = [r[1] for r in info]
-    if not cols:
-        conn.execute(f"CREATE TABLE {table} ({schema})")
-        return
-    if "user" in cols:
-        return
-    conn.execute(f"ALTER TABLE {table} RENAME TO {table}__old")
-    conn.execute(f"CREATE TABLE {table} ({schema})")
-    conn.execute(
-        f"INSERT OR IGNORE INTO {table} (user, {copy_cols}) "
-        f"SELECT '', {copy_cols} FROM {table}__old"
-    )
-    conn.execute(f"DROP TABLE {table}__old")
+def init_db(retries: int = 30, delay: float = 1.0) -> None:
+    """Create tables, retrying while Postgres is still accepting connections.
 
-
-def init_db() -> None:
-    with get_conn() as conn:
-        for table, schema, copy_cols in _TABLES:
-            _ensure_with_user(conn, table, schema, copy_cols)
-        # Quote cache is global market data — shared across users.
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS investment_quotes (
-                ticker         TEXT PRIMARY KEY,
-                price          REAL,
-                currency       TEXT DEFAULT 'USD',
-                name           TEXT,
-                prev_close     REAL,
-                change         REAL,
-                change_percent REAL,
-                fetched_at     TEXT
-            )
-        """)
-        conn.commit()
+    In compose, the backend starts in parallel with Postgres; the healthcheck
+    blocks the dependency until the DB is ready, but in dev (running uvicorn
+    directly) we still want to be forgiving. Retries cover both cases.
+    """
+    last_err: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            with psycopg.connect(_database_url()) as conn:
+                with conn.cursor() as cur:
+                    for stmt in _DDL:
+                        cur.execute(stmt)
+            log.info("database schema ready (attempt %d)", attempt)
+            return
+        except psycopg.OperationalError as e:
+            last_err = e
+            log.warning("postgres not ready yet (attempt %d/%d): %s", attempt, retries, e)
+            time.sleep(delay)
+    raise RuntimeError(f"Postgres unavailable after {retries} attempts: {last_err}")

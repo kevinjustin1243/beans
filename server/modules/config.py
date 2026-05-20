@@ -1,13 +1,28 @@
+"""Per-deployment configuration loaded from ~/.config/beans/config.yaml.
+
+Config is read lazily on every call rather than at import time so that the
+process can start even when the file is missing or malformed — endpoints that
+need it (login, /health) raise a useful error instead of the import system
+failing first.
+"""
+
+import os
 from pathlib import Path
 import yaml
 
-_CONFIG_PATH = Path.home() / ".config" / "beans" / "config.yaml"
+
+def _config_path() -> Path:
+    override = os.environ.get("BEANS_CONFIG")
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".config" / "beans" / "config.yaml"
 
 
 def _load_config() -> dict:
-    if not _CONFIG_PATH.exists():
-        raise FileNotFoundError(f"Config file not found: {_CONFIG_PATH}")
-    with open(_CONFIG_PATH) as f:
+    path = _config_path()
+    if not path.exists():
+        raise FileNotFoundError(f"Config file not found: {path}")
+    with open(path) as f:
         return yaml.safe_load(f) or {}
 
 
@@ -15,11 +30,13 @@ def _get(key: str, required: bool = True) -> str:
     cfg = _load_config()
     val = cfg.get(key)
     if not val and required:
-        raise ValueError(f"'{key}' key missing from {_CONFIG_PATH}")
+        raise ValueError(f"'{key}' key missing from {_config_path()}")
     return str(val) if val else ""
 
 
-SECRET_KEY = _get("secret_key")
+def get_secret_key() -> str:
+    """JWT signing key. Lazily loaded so import never fails."""
+    return _get("secret_key")
 
 
 def get_users() -> dict[str, dict]:

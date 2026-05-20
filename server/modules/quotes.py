@@ -69,6 +69,6 @@ def fetch_history(ticker: str, range_: str = "1mo") -> list[dict]:
     for ts, close in zip(timestamps, closes):
         if close is None:
             continue
-        date = datetime.datetime.utcfromtimestamp(ts).date().isoformat()
+        date = datetime.datetime.fromtimestamp(ts, tz=datetime.UTC).date().isoformat()
         history.append({"date": date, "close": float(close)})
     return history

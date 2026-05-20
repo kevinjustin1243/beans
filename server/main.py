@@ -1,22 +1,34 @@
-from fastapi import FastAPI, Depends
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.accounts import router as accounts_router
-from api.transactions import router as transactions_router
-from api.reports import router as reports_router
-from api.query import router as query_router
 from api.auth import router as auth_router
 from api.budget import router as budget_router
-from api.goals import router as goals_router
 from api.directives import router as directives_router
+from api.goals import router as goals_router
 from api.investments import router as investments_router
+from api.query import router as query_router
+from api.reports import router as reports_router
+from api.transactions import router as transactions_router
 from modules.auth import require_user
 from modules.config import get_users
 from modules.db import init_db
 from modules.ledger import get_ledger
 
-app = FastAPI(title="beans api", version="0.1.0")
-init_db()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Bootstrap schema on startup so the container can come up alongside Postgres.
+    init_db()
+    yield
+
+
+app = FastAPI(title="beans api", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

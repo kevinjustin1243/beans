@@ -14,49 +14,56 @@ router = APIRouter(prefix="/api/investments", tags=["investments"])
 CACHE_TTL = datetime.timedelta(minutes=15)
 
 
-class InvestmentIn(BaseModel):
-    ticker: str
-    shares: float
-    cost_basis: float
-    name: Optional[str] = None
+def _utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.UTC)
 
 
 def _refresh_quote(conn, ticker: str, force: bool = False):
-    row = conn.execute("SELECT * FROM investment_quotes WHERE ticker = ?", (ticker,)).fetchone()
+    row = conn.execute(
+        "SELECT * FROM investment_quotes WHERE ticker = %s",
+        (ticker,),
+    ).fetchone()
 
     if not force and row and row["fetched_at"]:
-        try:
-            fetched = datetime.datetime.fromisoformat(row["fetched_at"])
-            if datetime.datetime.utcnow() - fetched < CACHE_TTL:
-                return row
-        except ValueError:
-            pass
+        fetched = row["fetched_at"]
+        if fetched.tzinfo is None:
+            fetched = fetched.replace(tzinfo=datetime.UTC)
+        if _utcnow() - fetched < CACHE_TTL:
+            return row
 
     try:
         q = fetch_quote(ticker)
     except Exception:
         return row
 
-    now = datetime.datetime.utcnow().isoformat()
     conn.execute(
         """
         INSERT INTO investment_quotes
           (ticker, price, currency, name, prev_close, change, change_percent, fetched_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(ticker) DO UPDATE SET
-          price          = excluded.price,
-          currency       = excluded.currency,
-          name           = excluded.name,
-          prev_close     = excluded.prev_close,
-          change         = excluded.change,
-          change_percent = excluded.change_percent,
-          fetched_at     = excluded.fetched_at
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (ticker) DO UPDATE SET
+          price          = EXCLUDED.price,
+          currency       = EXCLUDED.currency,
+          name           = EXCLUDED.name,
+          prev_close     = EXCLUDED.prev_close,
+          change         = EXCLUDED.change,
+          change_percent = EXCLUDED.change_percent,
+          fetched_at     = EXCLUDED.fetched_at
         """,
         (ticker, q["price"], q["currency"], q["name"],
-         q["prev_close"], q["change"], q["change_percent"], now),
+         q["prev_close"], q["change"], q["change_percent"], _utcnow()),
     )
-    conn.commit()
-    return conn.execute("SELECT * FROM investment_quotes WHERE ticker = ?", (ticker,)).fetchone()
+    return conn.execute(
+        "SELECT * FROM investment_quotes WHERE ticker = %s",
+        (ticker,),
+    ).fetchone()
+
+
+class InvestmentIn(BaseModel):
+    ticker: str
+    shares: float
+    cost_basis: float
+    name: Optional[str] = None
 
 
 def _serialize(inv, quote) -> dict:
@@ -67,6 +74,7 @@ def _serialize(inv, quote) -> dict:
     gain = (value - cost) if value is not None else None
     gain_pct = (gain / cost * 100) if (gain is not None and cost) else None
     day_change = (quote["change"] * shares) if quote and quote["change"] is not None else None
+    fetched_at = quote["fetched_at"] if quote else None
 
     return {
         "id": inv["id"],
@@ -82,7 +90,7 @@ def _serialize(inv, quote) -> dict:
         "day_change": day_change,
         "day_change_percent": quote["change_percent"] if quote else None,
         "currency": quote["currency"] if quote else "USD",
-        "fetched_at": quote["fetched_at"] if quote else None,
+        "fetched_at": fetched_at.isoformat() if isinstance(fetched_at, datetime.datetime) else fetched_at,
     }
 
 
@@ -90,7 +98,7 @@ def _serialize(inv, quote) -> dict:
 def list_investments(refresh: bool = Query(False), username: str = Depends(require_user)):
     with get_conn() as conn:
         invs = conn.execute(
-            "SELECT * FROM investments WHERE user = ? ORDER BY ticker",
+            "SELECT * FROM investments WHERE username = %s ORDER BY ticker",
             (username,),
         ).fetchall()
         results = [_serialize(inv, _refresh_quote(conn, inv["ticker"], force=refresh)) for inv in invs]
@@ -105,11 +113,10 @@ def add_investment(body: InvestmentIn, username: str = Depends(require_user)):
         raise HTTPException(status_code=400, detail="Ticker required")
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO investments (id, user, ticker, shares, cost_basis, name)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO investments (id, username, ticker, shares, cost_basis, name)"
+            " VALUES (%s, %s, %s, %s, %s, %s)",
             (inv_id, username, ticker, body.shares, body.cost_basis, body.name),
         )
-        conn.commit()
         _refresh_quote(conn, ticker, force=True)
     return {"id": inv_id}
 
@@ -118,12 +125,12 @@ def add_investment(body: InvestmentIn, username: str = Depends(require_user)):
 def update_investment(inv_id: str, body: InvestmentIn, username: str = Depends(require_user)):
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE investments SET ticker=?, shares=?, cost_basis=?, name=?"
-            " WHERE id=? AND user=?",
+            "UPDATE investments SET ticker=%s, shares=%s, cost_basis=%s, name=%s"
+            " WHERE id=%s AND username=%s",
             (body.ticker.upper().strip(), body.shares, body.cost_basis, body.name, inv_id, username),
         )
-        conn.commit()
-    if cur.rowcount == 0:
+        rowcount = cur.rowcount
+    if rowcount == 0:
         raise HTTPException(status_code=404, detail="Investment not found")
     return {"ok": True}
 
@@ -132,10 +139,9 @@ def update_investment(inv_id: str, body: InvestmentIn, username: str = Depends(r
 def delete_investment(inv_id: str, username: str = Depends(require_user)):
     with get_conn() as conn:
         conn.execute(
-            "DELETE FROM investments WHERE id = ? AND user = ?",
+            "DELETE FROM investments WHERE id = %s AND username = %s",
             (inv_id, username),
         )
-        conn.commit()
 
 
 @router.get("/{ticker}/history")

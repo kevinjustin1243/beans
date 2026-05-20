@@ -5,3 +5,4 @@ beanquery
 pyyaml
 bcrypt
 python-jose[cryptography]
+psycopg[binary]>=3.2

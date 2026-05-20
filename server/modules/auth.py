@@ -5,7 +5,7 @@ from fastapi import Cookie, HTTPException, status
 from jose import JWTError, jwt
 import bcrypt
 
-from .config import SECRET_KEY, get_users
+from .config import get_secret_key, get_users
 
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24
@@ -20,13 +20,13 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_token(username: str) -> str:
-    expire = datetime.datetime.utcnow() + datetime.timedelta(hours=TOKEN_EXPIRE_HOURS)
-    return jwt.encode({"sub": username, "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
+    expire = datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=TOKEN_EXPIRE_HOURS)
+    return jwt.encode({"sub": username, "exp": expire}, get_secret_key(), algorithm=ALGORITHM)
 
 
 def decode_token(token: str) -> str:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, get_secret_key(), algorithms=[ALGORITHM])
         username: Optional[str] = payload.get("sub")
         if not username:
             raise ValueError
