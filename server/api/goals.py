@@ -1,7 +1,8 @@
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from modules.auth import require_user
 from modules.db import get_conn
@@ -15,6 +16,8 @@ class GoalIn(BaseModel):
     currency: str = "USD"
     account: str = ""
     manual_current: float = 0
+    icon: Optional[str] = Field(default=None, max_length=10)
+    color: Optional[str] = Field(default=None, max_length=10)
 
 
 def _row(row) -> dict:
@@ -25,6 +28,8 @@ def _row(row) -> dict:
         "currency": row["currency"],
         "account": row["account"],
         "manual_current": row["manual_current"],
+        "icon": row["icon"],
+        "color": row["color"],
     }
 
 
@@ -32,7 +37,7 @@ def _row(row) -> dict:
 def list_goals(username: str = Depends(require_user)):
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT id, name, target_amount, currency, account, manual_current"
+            "SELECT id, name, target_amount, currency, account, manual_current, icon, color"
             " FROM goals WHERE username = %s ORDER BY name",
             (username,),
         ).fetchall()
@@ -44,9 +49,11 @@ def create_goal(body: GoalIn, username: str = Depends(require_user)):
     goal_id = str(uuid.uuid4())
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO goals (id, username, name, target_amount, currency, account, manual_current)"
-            " VALUES (%s, %s, %s, %s, %s, %s, %s)",
-            (goal_id, username, body.name, body.target_amount, body.currency, body.account, body.manual_current),
+            "INSERT INTO goals (id, username, name, target_amount, currency, account,"
+            " manual_current, icon, color)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (goal_id, username, body.name, body.target_amount, body.currency, body.account,
+             body.manual_current, body.icon, body.color),
         )
     return {"id": goal_id}
 
@@ -55,9 +62,11 @@ def create_goal(body: GoalIn, username: str = Depends(require_user)):
 def update_goal(goal_id: str, body: GoalIn, username: str = Depends(require_user)):
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE goals SET name=%s, target_amount=%s, currency=%s, account=%s, manual_current=%s"
+            "UPDATE goals SET name=%s, target_amount=%s, currency=%s, account=%s,"
+            " manual_current=%s, icon=%s, color=%s"
             " WHERE id=%s AND username=%s",
-            (body.name, body.target_amount, body.currency, body.account, body.manual_current, goal_id, username),
+            (body.name, body.target_amount, body.currency, body.account, body.manual_current,
+             body.icon, body.color, goal_id, username),
         )
         rowcount = cur.rowcount
     if rowcount == 0:

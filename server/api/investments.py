@@ -64,6 +64,8 @@ class InvestmentIn(BaseModel):
     shares: float
     cost_basis: float
     name: Optional[str] = None
+    asset_type: Optional[str] = None  # stock | etf | bond | crypto | cash | other
+    sector: Optional[str] = None
 
 
 def _serialize(inv, quote) -> dict:
@@ -91,6 +93,8 @@ def _serialize(inv, quote) -> dict:
         "day_change_percent": quote["change_percent"] if quote else None,
         "currency": quote["currency"] if quote else "USD",
         "fetched_at": fetched_at.isoformat() if isinstance(fetched_at, datetime.datetime) else fetched_at,
+        "asset_type": inv["asset_type"] if "asset_type" in inv.keys() else None,
+        "sector": inv["sector"] if "sector" in inv.keys() else None,
     }
 
 
@@ -113,9 +117,10 @@ def add_investment(body: InvestmentIn, username: str = Depends(require_user)):
         raise HTTPException(status_code=400, detail="Ticker required")
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO investments (id, username, ticker, shares, cost_basis, name)"
-            " VALUES (%s, %s, %s, %s, %s, %s)",
-            (inv_id, username, ticker, body.shares, body.cost_basis, body.name),
+            "INSERT INTO investments (id, username, ticker, shares, cost_basis, name, asset_type, sector)"
+            " VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+            (inv_id, username, ticker, body.shares, body.cost_basis, body.name,
+             body.asset_type, body.sector),
         )
         _refresh_quote(conn, ticker, force=True)
     return {"id": inv_id}
@@ -125,14 +130,56 @@ def add_investment(body: InvestmentIn, username: str = Depends(require_user)):
 def update_investment(inv_id: str, body: InvestmentIn, username: str = Depends(require_user)):
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE investments SET ticker=%s, shares=%s, cost_basis=%s, name=%s"
-            " WHERE id=%s AND username=%s",
-            (body.ticker.upper().strip(), body.shares, body.cost_basis, body.name, inv_id, username),
+            "UPDATE investments SET ticker=%s, shares=%s, cost_basis=%s, name=%s,"
+            " asset_type=%s, sector=%s WHERE id=%s AND username=%s",
+            (body.ticker.upper().strip(), body.shares, body.cost_basis, body.name,
+             body.asset_type, body.sector, inv_id, username),
         )
         rowcount = cur.rowcount
     if rowcount == 0:
         raise HTTPException(status_code=404, detail="Investment not found")
     return {"ok": True}
+
+
+@router.get("/sector-allocation")
+def sector_allocation(username: str = Depends(require_user)):
+    """Weighted-by-current-value sector breakdown of the user's holdings.
+
+    Uses ``current_price * shares`` per holding, falling back to
+    ``cost_basis * shares`` when no quote is cached. Unlabelled holdings are
+    bucketed under "Unspecified" so the chart accounts for every dollar.
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT i.sector, i.asset_type, i.cost_basis, i.shares, q.price"
+            " FROM investments i"
+            " LEFT JOIN investment_quotes q ON q.ticker = i.ticker"
+            " WHERE i.username = %s",
+            (username,),
+        ).fetchall()
+
+    by_sector: dict[str, float] = {}
+    total = 0.0
+    for r in rows:
+        shares = float(r["shares"])
+        price = r["price"]
+        value = float(price) * shares if price is not None else float(r["cost_basis"]) * shares
+        sector = r["sector"] or "Unspecified"
+        by_sector[sector] = by_sector.get(sector, 0.0) + value
+        total += value
+
+    items = sorted(
+        (
+            {
+                "sector": s,
+                "value": round(v, 2),
+                "percent": round(v / total * 100, 2) if total > 0 else 0.0,
+            }
+            for s, v in by_sector.items()
+        ),
+        key=lambda x: -x["value"],
+    )
+    return {"total": round(total, 2), "sectors": items}
 
 
 @router.delete("/{inv_id}", status_code=204)

@@ -111,14 +111,21 @@ def health_score(username: str = Depends(require_user)):
 
 
 def _distinct_holdings(username: str) -> int:
-    """Count distinct tickers (a proxy for asset-type diversity until we add
-    a ``securities`` table with asset_type/sector). Capped at 5 by the score."""
+    """Count distinct ``asset_type`` values for the diversity factor.
+
+    Falls back to distinct tickers when no asset_types have been labelled
+    yet — so a brand-new portfolio still scores non-zero. Capped at 5 by
+    ``compute_financial_health``.
+    """
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT COUNT(DISTINCT ticker) AS n FROM investments WHERE username = %s",
+            "SELECT COUNT(DISTINCT asset_type) AS labelled,"
+            "       COUNT(DISTINCT ticker)     AS tickers"
+            " FROM investments WHERE username = %s",
             (username,),
         ).fetchone()
-    return int(row["n"] or 0)
+    labelled = int(row["labelled"] or 0)
+    return labelled if labelled > 0 else int(row["tickers"] or 0)
 
 
 @router.get("/insights")

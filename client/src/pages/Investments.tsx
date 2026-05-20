@@ -24,7 +24,11 @@ interface Investment {
   day_change_percent: number | null;
   currency: string;
   fetched_at: string | null;
+  asset_type: string | null;
+  sector: string | null;
 }
+
+const ASSET_TYPES = ["stock", "etf", "bond", "crypto", "cash", "other"] as const;
 
 interface HistoryPoint {
   date: string;
@@ -274,8 +278,18 @@ export default function Investments() {
                         <div className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: colorFor(idx) }} />
                           <div>
-                            <div className="font-semibold text-slate-800">{inv.ticker}</div>
-                            <div className="text-xs text-slate-400 truncate max-w-[180px]">{inv.name}</div>
+                            <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                              <span>{inv.ticker}</span>
+                              {inv.asset_type && (
+                                <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-normal">
+                                  {inv.asset_type}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-slate-400 truncate max-w-[180px]">
+                              {inv.name}
+                              {inv.sector && <span className="text-slate-300"> · {inv.sector}</span>}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -419,6 +433,8 @@ function InvestmentModal({
   const [shares, setShares] = useState(editing?.shares.toString() ?? "");
   const [costBasis, setCostBasis] = useState(editing?.cost_basis.toString() ?? "");
   const [name, setName] = useState(editing?.name ?? "");
+  const [assetType, setAssetType] = useState<string>(editing?.asset_type ?? "");
+  const [sector, setSector] = useState<string>(editing?.sector ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -432,6 +448,8 @@ function InvestmentModal({
         shares: parseFloat(shares),
         cost_basis: parseFloat(costBasis),
         name: name || null,
+        asset_type: assetType || null,
+        sector: sector.trim() || null,
       };
       const url = editing ? `/api/investments/${editing.id}` : "/api/investments";
       const method = editing ? "PUT" : "POST";
@@ -510,6 +528,35 @@ function InvestmentModal({
               placeholder="Auto-filled from ticker if blank"
               className={inputCls}
             />
+          </div>
+
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Asset type <span className="text-slate-400">(optional)</span>
+              </label>
+              <select
+                value={assetType}
+                onChange={(e) => setAssetType(e.target.value)}
+                className={inputCls}
+              >
+                <option value="">—</option>
+                {ASSET_TYPES.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Sector <span className="text-slate-400">(optional)</span>
+              </label>
+              <input
+                value={sector}
+                onChange={(e) => setSector(e.target.value)}
+                placeholder="Technology, Healthcare, …"
+                className={inputCls}
+              />
+            </div>
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}

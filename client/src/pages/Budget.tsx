@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../lib/api";
 
+const COLOR_SWATCHES = [
+  "#6366f1", "#10b981", "#f59e0b", "#ec4899",
+  "#8b5cf6", "#06b6d4", "#f43f5e", "#84cc16",
+];
+
 interface AccountNode {
   account: string;
   balance: Record<string, string>;
@@ -87,8 +92,10 @@ export default function Budget() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [targets, setTargets] = useState<Record<string, number>>({});
+  const [colors, setColors] = useState<Record<string, string>>({});
   const [editingTarget, setEditingTarget] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editColor, setEditColor] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -105,10 +112,13 @@ export default function Budget() {
   useEffect(() => {
     apiFetch("/api/budget/targets")
       .then((r) => r.json())
-      .then((d) => setTargets(d.targets ?? {}));
+      .then((d) => {
+        setTargets(d.targets ?? {});
+        setColors(d.colors ?? {});
+      });
   }, []);
 
-  async function commitTarget(account: string, value: string) {
+  async function commitTarget(account: string, value: string, color: string | null) {
     const n = parseFloat(value);
     if (isNaN(n) || n <= 0) {
       await apiFetch(`/api/budget/targets/${encodeURIComponent(account)}`, { method: "DELETE" });
@@ -117,14 +127,26 @@ export default function Budget() {
         delete next[account];
         return next;
       });
+      setColors((prev) => {
+        const next = { ...prev };
+        delete next[account];
+        return next;
+      });
     } else {
       await apiFetch(`/api/budget/targets/${encodeURIComponent(account)}`, {
         method: "PUT",
-        body: JSON.stringify({ amount: n }),
+        body: JSON.stringify({ amount: n, color }),
       });
       setTargets((prev) => ({ ...prev, [account]: n }));
+      setColors((prev) => {
+        const next = { ...prev };
+        if (color) next[account] = color;
+        else delete next[account];
+        return next;
+      });
     }
     setEditingTarget(null);
+    setEditColor(null);
   }
 
   const totalIncome = data ? aggregateBalance(data.income) : 0;
@@ -212,17 +234,20 @@ export default function Budget() {
                 <div className="space-y-0.5">
                   {flatExpenses.map((acct) => {
                     const target = targets[acct.account];
+                    const savedColor = colors[acct.account];
                     const pct = target
                       ? Math.min((acct.amount / target) * 100, 100)
                       : (acct.amount / maxAmount) * 100;
                     const over = target !== undefined && acct.amount > target;
-                    const barColor = !target
-                      ? "bg-slate-300"
+                    // Heuristic color (used when no per-row color is set).
+                    const heuristicColor = !target
+                      ? "#cbd5e1"  // slate-300
                       : over
-                        ? "bg-red-400"
+                        ? "#f87171"  // red-400
                         : pct > 80
-                          ? "bg-amber-400"
-                          : "bg-emerald-400";
+                          ? "#fbbf24"  // amber-400
+                          : "#34d399"; // emerald-400
+                    const barColor = savedColor ?? heuristicColor;
                     const isEditing = editingTarget === acct.account;
 
                     return (
@@ -234,6 +259,7 @@ export default function Budget() {
                           if (editingTarget !== acct.account) {
                             setEditingTarget(acct.account);
                             setEditValue(target ? String(target) : "");
+                            setEditColor(savedColor ?? null);
                           }
                         }}
                       >
@@ -249,7 +275,7 @@ export default function Budget() {
                               <form
                                 onSubmit={(e) => {
                                   e.preventDefault();
-                                  commitTarget(acct.account, editValue);
+                                  commitTarget(acct.account, editValue, editColor);
                                 }}
                                 onClick={(e) => e.stopPropagation()}
                               >
@@ -262,7 +288,7 @@ export default function Budget() {
                                     step="0.01"
                                     value={editValue}
                                     onChange={(e) => setEditValue(e.target.value)}
-                                    onBlur={() => commitTarget(acct.account, editValue)}
+                                    onBlur={() => commitTarget(acct.account, editValue, editColor)}
                                     placeholder="target"
                                     className="border border-indigo-400 rounded px-2 py-0.5 text-xs w-24 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                   />
@@ -277,10 +303,36 @@ export default function Budget() {
                         </div>
                         <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
                           <div
-                            className={`h-full ${barColor} rounded-full transition-all`}
-                            style={{ width: `${pct}%` }}
+                            className="h-full rounded-full transition-all"
+                            style={{ width: `${pct}%`, background: barColor }}
                           />
                         </div>
+                        {isEditing && (
+                          <div
+                            className="flex items-center gap-1.5 mt-2 ml-0.5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span className="text-[10px] uppercase tracking-wider text-slate-400 mr-1">
+                              color
+                            </span>
+                            {COLOR_SWATCHES.map((c) => {
+                              const selected = editColor === c;
+                              return (
+                                <button
+                                  key={c}
+                                  type="button"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() =>
+                                    setEditColor((prev) => (prev === c ? null : c))
+                                  }
+                                  className={`w-4 h-4 rounded-full ${selected ? "ring-2 ring-offset-1 ring-slate-400" : ""}`}
+                                  style={{ background: c }}
+                                  aria-label={`Color ${c}`}
+                                />
+                              );
+                            })}
+                          </div>
+                        )}
                         {over && (
                           <p className="text-xs text-red-400 mt-0.5 text-right">
                             {fmt(acct.amount - target!, acct.currency)} over

@@ -10,11 +10,18 @@ interface Goal {
   currency: string;
   account: string;
   manual_current: number;
+  icon: string | null;
+  color: string | null;
 }
 
 interface GoalWithCurrent extends Goal {
   current: number;
 }
+
+const COLOR_SWATCHES = [
+  "#6366f1", "#10b981", "#f59e0b", "#ec4899",
+  "#8b5cf6", "#06b6d4", "#f43f5e", "#84cc16",
+];
 
 function fmt(n: number, currency: string): string {
   if (currency === "USD")
@@ -23,7 +30,7 @@ function fmt(n: number, currency: string): string {
 }
 
 function emptyGoal(): Omit<Goal, "id"> {
-  return { name: "", target_amount: 0, currency: "USD", account: "", manual_current: 0 };
+  return { name: "", target_amount: 0, currency: "USD", account: "", manual_current: 0, icon: null, color: null };
 }
 
 export default function Goals() {
@@ -144,11 +151,14 @@ export default function Goals() {
             return (
               <div key={g.id} className="bg-white rounded-xl border border-slate-200 p-5">
                 <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="font-semibold text-slate-900">{g.name}</h3>
-                    {g.account && (
-                      <p className="text-xs text-slate-400 mt-0.5 font-mono">{g.account}</p>
-                    )}
+                  <div className="flex items-center gap-3">
+                    {g.icon && <span className="text-2xl leading-none">{g.icon}</span>}
+                    <div>
+                      <h3 className="font-semibold text-slate-900">{g.name}</h3>
+                      {g.account && (
+                        <p className="text-xs text-slate-400 mt-0.5 font-mono">{g.account}</p>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-1">
                     <button
@@ -168,8 +178,11 @@ export default function Goals() {
 
                 <div className="h-3 bg-slate-100 rounded-full overflow-hidden mb-2">
                   <div
-                    className={`h-full rounded-full transition-all ${done ? "bg-emerald-400" : "bg-indigo-400"}`}
-                    style={{ width: `${pct}%` }}
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${pct}%`,
+                      background: g.color ?? (done ? "#34d399" : "#818cf8"),
+                    }}
                   />
                 </div>
 
@@ -329,6 +342,38 @@ function GoalModal({
               />
             </div>
           )}
+
+          <div className="flex gap-3">
+            <div className="w-28">
+              <label className="block text-xs font-medium text-slate-600 mb-1">
+                Icon <span className="text-slate-400">(emoji)</span>
+              </label>
+              <input
+                value={form.icon ?? ""}
+                onChange={(e) => setForm((p) => ({ ...p, icon: e.target.value || null }))}
+                placeholder="🏖️"
+                className={inputCls}
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Color</label>
+              <div className="flex flex-wrap gap-1.5">
+                {COLOR_SWATCHES.map((c) => {
+                  const selected = form.color === c;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setForm((p) => ({ ...p, color: selected ? null : c }))}
+                      className={`w-7 h-7 rounded-full transition-transform ${selected ? "ring-2 ring-offset-2 ring-slate-400 scale-110" : "hover:scale-110"}`}
+                      style={{ background: c }}
+                      aria-label={`Color ${c}`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
 
           <div className="flex justify-end gap-3 pt-2">
             <button

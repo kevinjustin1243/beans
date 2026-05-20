@@ -122,6 +122,13 @@ _DDL: list[str] = [
     "CREATE INDEX IF NOT EXISTS liabilities_username_idx ON liabilities (username)",
     "CREATE INDEX IF NOT EXISTS credit_scores_username_idx ON credit_scores (username)",
     "CREATE INDEX IF NOT EXISTS watchlist_username_idx   ON watchlist (username)",
+    # ── Tier C: additive UI-polish columns. ADD COLUMN IF NOT EXISTS makes
+    # these idempotent so init_db stays safe to call on every startup.
+    "ALTER TABLE goals          ADD COLUMN IF NOT EXISTS icon  TEXT",
+    "ALTER TABLE goals          ADD COLUMN IF NOT EXISTS color TEXT",
+    "ALTER TABLE budget_targets ADD COLUMN IF NOT EXISTS color TEXT",
+    "ALTER TABLE investments    ADD COLUMN IF NOT EXISTS asset_type TEXT",
+    "ALTER TABLE investments    ADD COLUMN IF NOT EXISTS sector     TEXT",
 ]
 
 

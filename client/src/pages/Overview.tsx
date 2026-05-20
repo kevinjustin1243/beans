@@ -71,6 +71,12 @@ interface NetWorthProjPoint {
   high: number;
 }
 
+interface SectorRow {
+  sector: string;
+  value: number;
+  percent: number;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtMoney(n: number, currency = "USD"): string {
@@ -103,12 +109,13 @@ export default function Overview() {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [catForecast, setCatForecast] = useState<CategoryForecast[]>([]);
   const [nwProj, setNwProj] = useState<NetWorthProjPoint[]>([]);
+  const [sectors, setSectors] = useState<SectorRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const [s, b, t, bg, bl, h, i, cf, nw] = await Promise.all([
+      const [s, b, t, bg, bl, h, i, cf, nw, sec] = await Promise.all([
         fetchJSON<Summary>("/api/dashboard/summary"),
         fetchJSON<{ breakdown: BreakdownRow[] }>("/api/dashboard/spending-breakdown"),
         fetchJSON<{ trend: TrendPoint[] }>("/api/dashboard/net-worth-trend"),
@@ -118,6 +125,7 @@ export default function Overview() {
         fetchJSON<{ insights: Insight[] }>("/api/predictions/insights"),
         fetchJSON<{ forecast: CategoryForecast[] }>("/api/predictions/spending-categories"),
         fetchJSON<{ projection: NetWorthProjPoint[] }>("/api/predictions/net-worth"),
+        fetchJSON<{ total: number; sectors: SectorRow[] }>("/api/investments/sector-allocation"),
       ]);
       if (cancelled) return;
       setSummary(s);
@@ -129,6 +137,7 @@ export default function Overview() {
       setInsights(i?.insights ?? []);
       setCatForecast(cf?.forecast ?? []);
       setNwProj(nw?.projection ?? []);
+      setSectors(sec?.sectors ?? []);
       setLoading(false);
     }
     load();
@@ -142,6 +151,11 @@ export default function Overview() {
   const donutSlices = useMemo(
     () => breakdown.slice(0, 8).map((row, i) => ({ label: row.category, value: row.total, color: colorFor(i) })),
     [breakdown],
+  );
+
+  const sectorSlices = useMemo(
+    () => sectors.map((row, i) => ({ label: row.sector, value: row.value, color: colorFor(i) })),
+    [sectors],
   );
 
   const trendPoints = useMemo(() => trend.map((t) => ({ date: t.month, value: t.value })), [trend]);
@@ -215,6 +229,32 @@ export default function Overview() {
           {nwProj.length >= 2 ? <ProjectionPanel rows={nwProj} currency={currency} /> : <Empty />}
         </Card>
       </div>
+
+      {/* Sector allocation (only shown when there's something to allocate) */}
+      {sectorSlices.length > 0 && (
+        <Card title="Portfolio by sector">
+          <div className="flex items-center gap-6">
+            <DonutChart
+              slices={sectorSlices}
+              centerLabel="invested"
+              centerValue={fmtMoney(sectorSlices.reduce((a, b) => a + b.value, 0), currency)}
+            />
+            <ul className="text-sm space-y-1.5 flex-1 min-w-0">
+              {sectors.map((s, i) => (
+                <li key={s.sector} className="flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: colorFor(i) }} />
+                    <span className="truncate text-slate-700">{s.sector}</span>
+                  </span>
+                  <span className="text-slate-500 tabular-nums">
+                    {fmtMoney(s.value, currency)} <span className="text-slate-400 text-xs">({s.percent.toFixed(0)}%)</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Card>
+      )}
 
       {/* Forecast + budget + bills */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
