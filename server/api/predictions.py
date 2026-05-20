@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from api.credit import get_latest_score
 from modules.auth import require_user
 from modules.db import get_conn
 from modules.predictions import (
@@ -105,7 +106,7 @@ def health_score(username: str = Depends(require_user)):
         latest_snapshot=latest,
         savings_goals=_goals(username),
         num_holding_types=_distinct_holdings(username),
-        latest_credit_score=None,  # No credit table yet — suppresses the factor.
+        latest_credit_score=get_latest_score(username),
     )
 
 
@@ -151,10 +152,33 @@ def insights(username: str = Depends(require_user)):
     }
 
 
+def _liabilities(username: str) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT name, balance, monthly_payment, rate"
+            " FROM liabilities WHERE username = %s",
+            (username,),
+        ).fetchall()
+    return [
+        {
+            "name": r["name"],
+            "balance": float(r["balance"]),
+            "monthly_payment": float(r["monthly_payment"]),
+            "rate": float(r["rate"]),
+        }
+        for r in rows
+    ]
+
+
 @router.get("/optimizations")
 def optimizations(username: str = Depends(require_user)):
     try:
         inactive = inactive_recurring(username)
     except FileNotFoundError:
         inactive = []
-    return {"optimizations": compute_optimizations(inactive_recurring=inactive, liabilities=None)}
+    return {
+        "optimizations": compute_optimizations(
+            inactive_recurring=inactive,
+            liabilities=_liabilities(username),
+        )
+    }

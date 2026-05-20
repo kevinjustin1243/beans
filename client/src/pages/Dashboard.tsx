@@ -8,9 +8,12 @@ import {
   Bars3Icon,
   BookOpenIcon,
   CreditCardIcon,
+  EyeIcon,
   FlagIcon,
   HomeIcon,
   ListBulletIcon,
+  ScaleIcon,
+  ShieldCheckIcon,
   XMarkIcon,
 } from "../components/icons";
 
@@ -21,6 +24,9 @@ const nav = [
   { to: "budget", label: "Budget", icon: <BanknoteIcon className="w-5 h-5" /> },
   { to: "goals", label: "Goals", icon: <FlagIcon className="w-5 h-5" /> },
   { to: "investments", label: "Investments", icon: <ArrowTrendingUpIcon className="w-5 h-5" /> },
+  { to: "watchlist", label: "Watchlist", icon: <EyeIcon className="w-5 h-5" /> },
+  { to: "liabilities", label: "Liabilities", icon: <ScaleIcon className="w-5 h-5" /> },
+  { to: "credit", label: "Credit", icon: <ShieldCheckIcon className="w-5 h-5" /> },
   { to: "ledger", label: "Ledger", icon: <BookOpenIcon className="w-5 h-5" /> },
 ];
 

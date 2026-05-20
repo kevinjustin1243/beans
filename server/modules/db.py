@@ -85,8 +85,43 @@ _DDL: list[str] = [
         fetched_at     TIMESTAMPTZ
     )
     """,
-    "CREATE INDEX IF NOT EXISTS goals_username_idx ON goals (username)",
+    """
+    CREATE TABLE IF NOT EXISTS liabilities (
+        id               TEXT PRIMARY KEY,
+        username         TEXT NOT NULL,
+        name             TEXT NOT NULL,
+        balance          DOUBLE PRECISION NOT NULL,
+        original_balance DOUBLE PRECISION NOT NULL,
+        monthly_payment  DOUBLE PRECISION NOT NULL,
+        rate             DOUBLE PRECISION NOT NULL,
+        icon             TEXT,
+        created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS credit_scores (
+        id        BIGSERIAL PRIMARY KEY,
+        username  TEXT NOT NULL,
+        month     DATE NOT NULL,
+        score     INTEGER NOT NULL CHECK (score BETWEEN 300 AND 850),
+        UNIQUE (username, month)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS watchlist (
+        id         TEXT PRIMARY KEY,
+        username   TEXT NOT NULL,
+        ticker     TEXT NOT NULL,
+        note       TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (username, ticker)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS goals_username_idx       ON goals (username)",
     "CREATE INDEX IF NOT EXISTS investments_username_idx ON investments (username)",
+    "CREATE INDEX IF NOT EXISTS liabilities_username_idx ON liabilities (username)",
+    "CREATE INDEX IF NOT EXISTS credit_scores_username_idx ON credit_scores (username)",
+    "CREATE INDEX IF NOT EXISTS watchlist_username_idx   ON watchlist (username)",
 ]
 
 

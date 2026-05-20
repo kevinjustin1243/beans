@@ -10,6 +10,9 @@ import Budget from "./pages/Budget";
 import Goals from "./pages/Goals";
 import Investments from "./pages/Investments";
 import Ledger from "./pages/Ledger";
+import Liabilities from "./pages/Liabilities";
+import CreditScore from "./pages/CreditScore";
+import Watchlist from "./pages/Watchlist";
 import NotFound from "./pages/NotFound";
 
 const App = () => {
@@ -33,6 +36,9 @@ const App = () => {
           <Route path="budget" element={<Budget />} />
           <Route path="goals" element={<Goals />} />
           <Route path="investments" element={<Investments />} />
+          <Route path="watchlist" element={<Watchlist />} />
+          <Route path="liabilities" element={<Liabilities />} />
+          <Route path="credit" element={<CreditScore />} />
           <Route path="ledger" element={<Ledger />} />
         </Route>
         <Route path="*" element={<NotFound />} />
