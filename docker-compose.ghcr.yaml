@@ -1,0 +1,62 @@
+# Pull-only stack: runs the GHCR images built by .github/workflows/publish.yaml.
+# No local source needed — drop this file and a .env onto any host with Docker.
+#
+# Usage:
+#   docker compose -f docker-compose.ghcr.yaml pull
+#   docker compose -f docker-compose.ghcr.yaml up -d
+#
+# Required env (see .env.example):
+#   POSTGRES_PASSWORD - password for the `beans` Postgres role
+#   BEANS_CONFIG_DIR  - host dir containing config.yaml (defaults to ./config)
+#   BEANS_LEDGER_DIR  - host dir containing the .beancount file referenced by config.yaml
+#
+# Optional:
+#   BEANS_TAG         - image tag to pull (default `latest`; use `sha-<short>` to pin)
+#   FRONTEND_PORT     - host port for the nginx frontend (default 80)
+#
+# Private packages: `docker login ghcr.io -u <github-username>` with a PAT
+# that has `read:packages` before running `docker compose pull`.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: beans
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-beans}
+      POSTGRES_DB: beans
+    volumes:
+      - beans-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beans -d beans"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    image: ghcr.io/kevinjustin1243/beans-back:${BEANS_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - HOME=/root
+      - DATABASE_URL=postgres://beans:${POSTGRES_PASSWORD:-beans}@db:5432/beans
+    expose:
+      - "8000"
+    volumes:
+      - ${BEANS_CONFIG_DIR:-./config}:/root/.config/beans
+      - ${BEANS_LEDGER_DIR:-./ledger}:/data/ledger
+
+  frontend:
+    image: ghcr.io/kevinjustin1243/beans-front:${BEANS_TAG:-latest}
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+
+volumes:
+  beans-pg-data:
