@@ -21,25 +21,48 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 @router.get("/summary")
 def summary(username: str = Depends(require_user)):
-    """Headline numbers: net worth, monthly income, monthly spending, savings rate."""
+    """Headline numbers: net worth, monthly income, monthly spending, savings rate.
+
+    ``net_worth`` includes a mark-to-market overlay on the current month's
+    investments (see ``modules/snapshots.py``). The ``mark_to_market`` field
+    breaks that out so the UI can show "$X invested (cost) → $Y (market)".
+    """
     try:
         snaps = monthly_snapshots(username, months=2)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
     if not snaps:
-        return {"net_worth": 0, "monthly_income": 0, "monthly_spending": 0, "savings_rate": 0}
+        return {
+            "net_worth": 0,
+            "monthly_income": 0,
+            "monthly_spending": 0,
+            "savings_rate": 0,
+            "mark_to_market": None,
+        }
 
     latest = snaps[-1]
     income = float(latest["income"] or 0)
     spending = float(latest["spending"] or 0)
     savings_rate = (income - spending) / income if income > 0 else 0.0
+    mtm = latest.get("mark_to_market") or None
+
     return {
         "net_worth": latest["net_worth"],
         "monthly_income": income,
         "monthly_spending": spending,
         "savings_rate": round(savings_rate, 4),
         "currency": latest.get("currency", "USD"),
+        "mark_to_market": (
+            {
+                "adjustment":      mtm["adjustment"],
+                "market_value":    mtm["market_value"],
+                "ledger_value":    mtm["ledger_value"],
+                "unrealized_gain": mtm["unrealized_gain"],
+            }
+            if mtm and (mtm["adjustment"] or mtm["market_value"])
+            else None
+        ),
     }
 
 

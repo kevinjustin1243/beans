@@ -4,12 +4,20 @@ import { DonutChart, LineChart, colorFor } from "../components/charts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface MarkToMarket {
+  adjustment: number;
+  market_value: number;
+  ledger_value: number;
+  unrealized_gain: number;
+}
+
 interface Summary {
   net_worth: number;
   monthly_income: number;
   monthly_spending: number;
   savings_rate: number;
   currency?: string;
+  mark_to_market?: MarkToMarket | null;
 }
 
 interface BreakdownRow {
@@ -89,6 +97,18 @@ function fmtMoney(n: number, currency = "USD"): string {
 
 function fmtPct(n: number): string {
   return `${(n * 100).toFixed(1)}%`;
+}
+
+function mtmSubtitle(mtm: MarkToMarket, currency: string): { text: string; tone: "positive" | "negative" | "neutral" } {
+  const gain = mtm.unrealized_gain;
+  if (!gain) {
+    return { text: `incl. ${fmtMoney(mtm.market_value, currency)} invested`, tone: "neutral" };
+  }
+  const sign = gain > 0 ? "+" : "−";
+  return {
+    text: `${sign}${fmtMoney(Math.abs(gain), currency)} unrealized`,
+    tone: gain > 0 ? "positive" : "negative",
+  };
 }
 
 async function fetchJSON<T>(path: string): Promise<T | null> {
@@ -208,7 +228,16 @@ export default function Overview() {
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-        <Stat label="Net worth" value={fmtMoney(summary?.net_worth ?? 0, currency)} accent="emerald" />
+        <Stat
+          label="Net worth"
+          value={fmtMoney(summary?.net_worth ?? 0, currency)}
+          accent="emerald"
+          sub={
+            summary?.mark_to_market
+              ? mtmSubtitle(summary.mark_to_market, currency)
+              : undefined
+          }
+        />
         <Stat label="Income (this mo)" value={fmtMoney(summary?.monthly_income ?? 0, currency)} accent="indigo" />
         <Stat label="Spending (this mo)" value={fmtMoney(summary?.monthly_spending ?? 0, currency)} accent="rose" />
         <Stat label="Savings rate" value={fmtPct(summary?.savings_rate ?? 0)} accent="amber" />
@@ -327,17 +356,35 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
   );
 }
 
-function Stat({ label, value, accent }: { label: string; value: string; accent: "emerald" | "indigo" | "rose" | "amber" }) {
+function Stat({
+  label,
+  value,
+  accent,
+  sub,
+}: {
+  label: string;
+  value: string;
+  accent: "emerald" | "indigo" | "rose" | "amber";
+  sub?: { text: string; tone: "positive" | "negative" | "neutral" };
+}) {
   const accents: Record<string, string> = {
     emerald: "from-emerald-50 to-white border-emerald-100",
     indigo: "from-indigo-50 to-white border-indigo-100",
     rose: "from-rose-50 to-white border-rose-100",
     amber: "from-amber-50 to-white border-amber-100",
   };
+  const subTone: Record<string, string> = {
+    positive: "text-emerald-600",
+    negative: "text-rose-600",
+    neutral: "text-slate-500",
+  };
   return (
     <div className={`bg-gradient-to-b ${accents[accent]} border rounded-xl p-4`}>
       <div className="text-xs text-slate-500 uppercase tracking-wider">{label}</div>
       <div className="text-xl md:text-2xl font-semibold text-slate-900 mt-1 tabular-nums">{value}</div>
+      {sub && (
+        <div className={`text-[11px] mt-1 tabular-nums ${subTone[sub.tone]}`}>{sub.text}</div>
+      )}
     </div>
   );
 }

@@ -16,6 +16,7 @@ from collections import defaultdict
 
 from beancount.core import account_types, data, realization
 
+from .db import get_conn
 from .ledger import get_ledger
 
 
@@ -81,6 +82,120 @@ def _sum_currency(node, currency: str) -> float:
     return total
 
 
+# ── Mark-to-market overlay for investments ────────────────────────────────────
+#
+# The Beancount ledger records investment positions at cost basis (the cash
+# you transferred into the position). The Investments page tracks the same
+# positions in Postgres with a live market price cache. To make the Overview's
+# "Net worth" reflect today's actual wealth, we apply a one-off adjustment to
+# the *current month's* snapshot:
+#
+#     adjustment_per_holding = (shares * current_price) - ledger_balance
+#
+# When the user records buys in beancount with a per-ticker asset account
+# (e.g. ``Assets:Investments:VOO``), ``ledger_balance`` equals the cost basis
+# and the adjustment is just the unrealized gain/loss. When the holding only
+# exists in the Postgres table (no beancount account), ``ledger_balance`` is
+# zero and the full market value is added. Either way we don't double-count.
+#
+# Past months keep ledger-only numbers because the quote cache only has the
+# latest price; pretending current prices applied historically would be lying.
+
+
+def _ledger_account_for_ticker(entries, ticker: str, asset_prefix: str) -> str | None:
+    """Find the asset account that tracks ``ticker``, by suffix or ``ticker:`` meta."""
+    target = ticker.upper()
+    for e in entries:
+        if not isinstance(e, data.Open):
+            continue
+        if e.account != asset_prefix and not e.account.startswith(asset_prefix + ":"):
+            continue
+        tail = e.account.rsplit(":", 1)[-1].upper()
+        if tail == target:
+            return e.account
+        meta_ticker = (e.meta or {}).get("ticker")
+        if isinstance(meta_ticker, str) and meta_ticker.upper() == target:
+            return e.account
+    return None
+
+
+def _account_balance(real_root, account: str, currency: str) -> float:
+    """Sum of the operating currency inside ``account`` (including children)."""
+    node = realization.get(real_root, account)
+    return _sum_currency(node, currency) if node else 0.0
+
+
+def mark_to_market_overlay(username: str, entries, asset_prefix: str, currency: str) -> dict:
+    """Return current-month investment mark-to-market summary.
+
+    Result shape::
+
+        {
+          "adjustment":         float,   # total $ to add to assets / net worth
+          "market_value":       float,   # market value of all holdings combined
+          "ledger_value":       float,   # cost-basis sum recorded in the ledger
+          "unrealized_gain":    float,   # market_value - ledger_value for matched lots
+          "holdings": [
+            {"ticker", "shares", "market_value", "ledger_balance",
+             "account": str|None, "adjustment": float},
+            ...
+          ],
+        }
+    """
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT i.ticker, i.shares, i.cost_basis, q.price"
+            " FROM investments i"
+            " LEFT JOIN investment_quotes q ON q.ticker = i.ticker"
+            " WHERE i.username = %s",
+            (username,),
+        ).fetchall()
+
+    if not rows:
+        return {"adjustment": 0.0, "market_value": 0.0, "ledger_value": 0.0,
+                "unrealized_gain": 0.0, "holdings": []}
+
+    real_root = realization.realize(entries)
+    total_adj = 0.0
+    total_market = 0.0
+    total_ledger = 0.0
+    holdings: list[dict] = []
+
+    for row in rows:
+        ticker = row["ticker"]
+        shares = float(row["shares"])
+        price = float(row["price"]) if row["price"] is not None else None
+        if price is None:
+            # No quote available — fall back to cost basis so the holding still
+            # contributes something (mirrors the Investments-page fallback).
+            price = float(row["cost_basis"])
+        market_value = shares * price
+
+        account = _ledger_account_for_ticker(entries, ticker, asset_prefix)
+        ledger_balance = _account_balance(real_root, account, currency) if account else 0.0
+
+        adjustment = market_value - ledger_balance
+        total_adj += adjustment
+        total_market += market_value
+        total_ledger += ledger_balance
+        holdings.append({
+            "ticker": ticker,
+            "shares": shares,
+            "market_value": round(market_value, 2),
+            "ledger_balance": round(ledger_balance, 2),
+            "account": account,
+            "adjustment": round(adjustment, 2),
+        })
+
+    return {
+        "adjustment": round(total_adj, 2),
+        "market_value": round(total_market, 2),
+        "ledger_value": round(total_ledger, 2),
+        "unrealized_gain": round(total_market - total_ledger, 2),
+        "holdings": holdings,
+    }
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 
 
@@ -126,6 +241,10 @@ def monthly_snapshots(username: str, months: int = 6) -> list[dict]:
             elif p.account.startswith(acct.expenses + ":") or p.account == acct.expenses:
                 spend_by_month[m] += n
 
+    # Compute the mark-to-market overlay once; it's only applied to the
+    # current month (past months retain their ledger-only / cost-basis view).
+    overlay = mark_to_market_overlay(username, entries, acct.assets, currency)
+
     snapshots = []
     for i in range(months):
         m_first = _add_months(start_first, i)
@@ -134,6 +253,11 @@ def monthly_snapshots(username: str, months: int = 6) -> list[dict]:
         liabilities_signed = _balance_at(entries, acct.liabilities, m_end, currency)
         # Beancount liabilities are stored as negative numbers — flip to magnitude.
         total_liab = -liabilities_signed
+
+        is_current = m_first == current_first
+        if is_current and overlay["adjustment"]:
+            assets += overlay["adjustment"]
+
         snapshots.append({
             "month": m_first,
             "label": _short_label(m_first, current_year),
@@ -143,6 +267,7 @@ def monthly_snapshots(username: str, months: int = 6) -> list[dict]:
             "total_liabilities": round(total_liab, 2),
             "net_worth": round(assets + liabilities_signed, 2),
             "currency": currency,
+            "mark_to_market": overlay if is_current else None,
         })
     return snapshots
 

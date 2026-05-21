@@ -101,6 +101,33 @@ docker-compose.yaml     # db + backend + frontend
 .github/workflows/      # CI: build + push to GHCR, PR verification
 ```
 
+## Investments and net worth
+
+The Investments page (Postgres) and your `.beancount` ledger track holdings
+separately. The Overview's **Net worth** card combines them: ledger balances
+for everything, plus a current-month mark-to-market overlay for each
+investment row whose market value differs from its recorded cost basis.
+
+Two ways to make the connection explicit so the overlay lands in the right
+place instead of being treated as an uncategorized add-on:
+
+```beancount
+; (1) account name ends with the ticker
+2025-01-01 open Assets:Investments:VOO   USD
+2025-02-15 * "Vanguard" "buy VOO"
+  Assets:Bank:Checking   -4000.00 USD
+  Assets:Investments:VOO  4000.00 USD
+
+; (2) account uses a different name but declares the ticker in meta
+2025-01-01 open Assets:Vanguard:S&P-500   USD
+  ticker: "VOO"
+```
+
+Holdings with no matching ledger account still count toward net worth — they
+just get added at full market value (since cost basis isn't recorded in the
+ledger). Past months stay ledger-only (cost basis), since the quote cache
+only holds the latest price.
+
 ## Roadmap
 
 - [ ] Investment support
