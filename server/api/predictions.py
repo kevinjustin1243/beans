@@ -9,9 +9,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from beancount.core import realization
+
 from api.credit import get_latest_score
 from modules.auth import require_user
 from modules.db import get_conn
+from modules.ledger import get_ledger
 from modules.predictions import (
     compute_financial_health,
     compute_optimizations,
@@ -35,13 +38,52 @@ def _snapshots_or_404(username: str, months: int = 6) -> list[dict]:
 
 
 def _goals(username: str) -> list[dict]:
+    """Resolve each goal's ``current`` value.
+
+    A goal can either be linked to a ledger account (``account != ''``) — in
+    which case its current value is that account's live balance in the
+    goal's currency — or fall back to the ``manual_current`` column. Without
+    this resolution, an emergency-fund goal linked to ``Assets:Savings:EF``
+    would always report 0 to the health-score factor.
+
+    Mirrors what ``pages/Goals.tsx`` does when rendering the progress bars.
+    """
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT name, target_amount AS target, manual_current AS current"
+            "SELECT name, target_amount AS target, manual_current AS manual,"
+            "       account, currency"
             " FROM goals WHERE username = %s",
             (username,),
         ).fetchall()
-    return [{"name": r["name"], "target": float(r["target"]), "current": float(r["current"])} for r in rows]
+
+    if not rows:
+        return []
+
+    real_root = None  # Lazily realized only if at least one goal is linked.
+    out: list[dict] = []
+    for r in rows:
+        current = float(r["manual"] or 0)
+        if r["account"]:
+            if real_root is None:
+                try:
+                    entries, _, _ = get_ledger(username)
+                    real_root = realization.realize(entries)
+                except FileNotFoundError:
+                    real_root = False  # sentinel: skip lookups for this request
+            if real_root:
+                node = realization.get(real_root, r["account"])
+                if node is not None:
+                    target_ccy = r["currency"] or "USD"
+                    for pos in node.balance:
+                        if pos.units.currency == target_ccy:
+                            current = abs(float(pos.units.number))
+                            break
+        out.append({
+            "name": r["name"],
+            "target": float(r["target"]),
+            "current": current,
+        })
+    return out
 
 
 def _portfolio_return(username: str) -> float | None:
