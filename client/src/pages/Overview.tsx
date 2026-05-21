@@ -164,6 +164,46 @@ export default function Overview() {
     return <div className="p-6 text-slate-400">Loading…</div>;
   }
 
+  // Detect a fully-empty ledger so we can show one clear "get started" panel
+  // instead of a wall of $0 stats. Every stat being zero AND no breakdown rows
+  // AND no holdings is a strong proxy for "no transactions yet".
+  const isEmpty =
+    (summary?.net_worth ?? 0) === 0 &&
+    (summary?.monthly_income ?? 0) === 0 &&
+    (summary?.monthly_spending ?? 0) === 0 &&
+    breakdown.length === 0 &&
+    sectors.length === 0 &&
+    bills.length === 0;
+
+  if (isEmpty) {
+    return (
+      <div className="p-4 md:p-6 max-w-3xl mx-auto">
+        <div className="bg-white rounded-xl border border-slate-200 p-8 md:p-12 text-center">
+          <h2 className="text-lg font-semibold text-slate-900 mb-2">No data yet</h2>
+          <p className="text-slate-500 text-sm mb-6 max-w-md mx-auto">
+            Your ledger has no transactions yet — every statistic on this page is
+            derived from your <span className="font-mono">.beancount</span> file. Add a few
+            entries and the dashboard will populate automatically.
+          </p>
+          <ul className="text-sm text-slate-600 inline-block text-left space-y-2 mb-6">
+            <li>
+              <span className="font-medium text-slate-900">→ Accounts:</span> use{" "}
+              <em>Add opening balance</em> to seed each account with a starting amount.
+            </li>
+            <li>
+              <span className="font-medium text-slate-900">→ Transactions:</span> record
+              individual charges, paychecks, and transfers.
+            </li>
+            <li>
+              <span className="font-medium text-slate-900">→ Ledger:</span> edit the raw
+              beancount file directly if you prefer plain text.
+            </li>
+          </ul>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
       {/* Summary cards */}
