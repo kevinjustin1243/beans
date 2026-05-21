@@ -1,4 +1,5 @@
 import datetime
+import decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -61,13 +62,29 @@ EQUITY_OPENING = "Equity:Opening-Balances"
 
 @router.post("/opening-balance", status_code=201)
 def opening_balance(body: OpeningBalanceIn, username: str = Depends(require_user)):
+    """Open an account and (optionally) seed it with a pad+balance assertion.
+
+    Two refinements over a naive "always write pad+balance":
+
+    - If ``amount`` is zero, skip the pad+balance pair entirely — Beancount
+      would otherwise flag the pad as unused (a freshly opened account is
+      already at zero, so the pad has nothing to fill).
+    - For ``Liabilities:*`` accounts we treat a positive user-entered amount
+      as a debt and flip the sign before writing. Beancount represents
+      liabilities as negative balances; the UI just asks "how much do you
+      owe" without making the user think about ledger sign conventions.
+    """
     try:
         entries, _, _ = get_ledger(username)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+    try:
+        amount = decimal.Decimal(body.amount)
+    except (decimal.InvalidOperation, TypeError):
+        raise HTTPException(status_code=400, detail=f"Invalid amount: {body.amount!r}")
+
     existing = getters.get_accounts(entries)
-    balance_date = body.date + datetime.timedelta(days=1)
     lines: list[str] = []
 
     if EQUITY_OPENING not in existing:
@@ -75,8 +92,16 @@ def opening_balance(body: OpeningBalanceIn, username: str = Depends(require_user
     if body.account not in existing:
         lines.append(f"{body.date} open {body.account}  {body.currency}\n")
 
-    lines.append(f"{body.date} pad  {body.account}  {EQUITY_OPENING}\n")
-    lines.append(f"{balance_date} balance {body.account}  {body.amount} {body.currency}\n")
+    if amount != 0:
+        if body.account.startswith("Liabilities:") and amount > 0:
+            amount = -amount
+        balance_date = body.date + datetime.timedelta(days=1)
+        lines.append(f"{body.date} pad  {body.account}  {EQUITY_OPENING}\n")
+        lines.append(f"{balance_date} balance {body.account}  {amount} {body.currency}\n")
+
+    if not lines:
+        # Account already existed and the caller asked for $0 — nothing to do.
+        return {"ok": True, "noop": True}
 
     ledger_path = get_user_ledger(username)
     with open(ledger_path, "a") as f:
